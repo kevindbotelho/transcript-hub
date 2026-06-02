@@ -16,7 +16,8 @@ import {
   X, 
   PlayCircle,
   Sparkles,
-  Loader2
+  Loader2,
+  ArrowLeft
 } from 'lucide-react';
 
 interface Transcription {
@@ -348,15 +349,26 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
         
         {/* Top Header do Dashboard */}
         <header className="h-16 flex items-center justify-between px-6 border-b border-white/[0.08] bg-[#080c14]/40 backdrop-blur-md">
-          <div className="flex items-center gap-2">
-            <h1 className="text-sm font-semibold text-white font-jakarta tracking-tight">
-              {selectedTranscription ? 'Detalhes da Transcrição' : 'Nova Transcrição'}
-            </h1>
+          <div className="flex items-center gap-3">
             {selectedTranscription && (
-              <span className="rounded-full bg-cyan-400/[0.12] border border-cyan-400/20 px-2 py-0.5 text-[9px] font-medium text-cyan-300">
-                Histórico
-              </span>
+              <button
+                onClick={() => setSelectedId(null)}
+                className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300 text-xs font-medium transition cursor-pointer font-geist mr-2 group"
+              >
+                <ArrowLeft className="h-3.5 w-3.5 text-slate-400 group-hover:text-white transition-colors" />
+                <span>Voltar</span>
+              </button>
             )}
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm font-semibold text-white font-jakarta tracking-tight">
+                {selectedTranscription ? 'Detalhes da Transcrição' : 'Nova Transcrição'}
+              </h1>
+              {selectedTranscription && (
+                <span className="rounded-full bg-cyan-400/[0.12] border border-cyan-400/20 px-2 py-0.5 text-[9px] font-medium text-cyan-300">
+                  Histórico
+                </span>
+              )}
+            </div>
           </div>
           
           <div className="flex items-center gap-3">
@@ -405,181 +417,200 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
             </div>
           ) : selectedTranscription ? (
             
-            /* Caso 2: Visualização de Transcrição Selecionada */
-            <div className="flex-1 flex flex-col max-w-3xl mx-auto w-full space-y-6">
-              
-              {/* Top Banner de Metadados */}
-              <div className="rounded-2xl border border-white/[0.08] bg-[#090f1a]/60 backdrop-blur-xl p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
-                    <FileText className="h-5 w-5" />
-                  </div>
-                  <div className="space-y-0.5 min-w-0">
-                    <h3 className="text-sm font-semibold text-white truncate pr-4">{selectedTranscription.file_name}</h3>
-                    <p className="text-[10px] text-slate-500 font-geist">Processado em {formatDate(selectedTranscription.created_at)}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 shrink-0">
-                  <div className="text-right">
-                    <p className="text-[9px] font-mono-jb text-slate-500 uppercase">Duração</p>
-                    <p className="text-xs font-semibold text-slate-200">{formatDuration(selectedTranscription.audio_duration)}</p>
-                  </div>
-                  <div className="h-6 w-px bg-white/[0.08]"></div>
-                  <div className="text-right">
-                    <p className="text-[9px] font-mono-jb text-slate-500 uppercase">Tamanho</p>
-                    <p className="text-xs font-semibold text-slate-200">{formatFileSize(selectedTranscription.file_size)}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Caixa do Texto Transcrito (Glassmorphism) */}
-              <div className="flex-1 rounded-[2rem] border border-white/[0.08] bg-[#090f1a]/70 p-6 sm:p-8 backdrop-blur-2xl relative shadow-xl overflow-hidden flex flex-col">
-                <div className="absolute inset-0 opacity-[0.015]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px)', backgroundSize: '30px 30px' }}></div>
+            /* Caso 2: Visualização de Transcrição Selecionada (Layout Lado a Lado / Fontes Ampliadas) */
+            <div className="flex-1 w-full max-w-5xl mx-auto flex flex-col justify-center py-4 relative z-10 animate-fade-in">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-stretch">
                 
-                {/* Cabeçalho do Resultado */}
-                <div className="relative z-10 flex items-center justify-between pb-4 border-b border-white/[0.06] mb-6">
-                  <div className="flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-cyan-400/[0.12] flex items-center justify-center text-cyan-300">
-                      <Sparkles className="h-3 w-3" />
-                    </span>
-                    <span className="text-[10px] font-mono-jb text-cyan-300 uppercase tracking-wider">Texto Transcrito</span>
-                  </div>
+                {/* Coluna da Esquerda: Metadados e Ações */}
+                <div className="lg:col-span-4 w-full">
                   
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => copyToClipboard(selectedTranscription.transcription_text)}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-1.5 bg-gradient-to-b from-cyan-400 to-cyan-500 border border-cyan-400 text-slate-950 text-[10px] font-semibold transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] hover:from-cyan-300 hover:to-cyan-400 cursor-pointer shadow-[0_2px_8px_rgba(34,211,238,0.15)]"
-                    >
-                      {copied ? (
-                        <>
-                          <Check className="h-3 w-3" />
-                          <span>Copiado!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="h-3 w-3" />
-                          <span>Copiar Texto</span>
-                        </>
-                      )}
-                    </button>
+                  {/* Card de Informações e Metadados */}
+                  <div className="rounded-[2rem] border border-white/[0.08] bg-[#090f1a]/70 p-6 backdrop-blur-2xl relative shadow-xl overflow-hidden group transition-all duration-300 hover:border-cyan-400/20 flex flex-col justify-between h-[520px]">
+                    <div className="absolute inset-0 opacity-[0.015] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '1.5rem 1.5rem' }}></div>
                     
-                    <button
-                      onClick={() => setSelectedId(null)}
-                      title="Voltar ao início"
-                      className="w-7 h-7 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-400 hover:text-slate-200 flex items-center justify-center transition cursor-pointer"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="space-y-5 relative z-10 w-full flex-1">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0 shadow-[0_0_12px_rgba(34,211,238,0.15)]">
+                          <FileText className="h-5 w-5" />
+                        </div>
+                        <div className="space-y-1 min-w-0 flex-1">
+                          <h3 className="text-[10px] font-mono-jb text-cyan-300 uppercase tracking-wider">Arquivo de Áudio</h3>
+                          <p className="text-xs font-semibold text-white break-words whitespace-pre-wrap pr-1" title={selectedTranscription.file_name}>
+                            {selectedTranscription.file_name}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="h-px bg-white/[0.08]"></div>
+
+                      {/* Grade de Metadados Resumo */}
+                      <div className="grid grid-cols-2 gap-4 font-geist">
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-mono-jb text-slate-500 uppercase tracking-wide">Duração</p>
+                          <p className="text-sm font-semibold text-slate-200">{formatDuration(selectedTranscription.audio_duration)}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-mono-jb text-slate-500 uppercase tracking-wide">Tamanho</p>
+                          <p className="text-sm font-semibold text-slate-200">{formatFileSize(selectedTranscription.file_size)}</p>
+                        </div>
+                        <div className="col-span-2 space-y-1">
+                          <p className="text-[10px] font-mono-jb text-slate-500 uppercase tracking-wide">Processado em</p>
+                          <p className="text-xs font-semibold text-slate-300">{formatDate(selectedTranscription.created_at)}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="h-px bg-white/[0.08] my-4 relative z-10"></div>
+
+                    {/* Botões de Ação na Coluna da Esquerda */}
+                    <div className="relative z-10 pt-1 shrink-0 w-full">
+                      <button
+                        onClick={() => copyToClipboard(selectedTranscription.transcription_text)}
+                        className="w-full inline-flex items-center justify-center gap-2 rounded-full px-5 py-3.5 bg-gradient-to-b from-cyan-400 to-cyan-500 border border-cyan-400 text-slate-950 text-xs font-semibold transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] hover:from-cyan-300 hover:to-cyan-400 hover:shadow-[0_8px_20px_rgba(34,211,238,0.25)] shadow-[0_4px_12px_rgba(34,211,238,0.15)] cursor-pointer font-geist"
+                      >
+                        {copied ? (
+                          <>
+                            <Check className="h-4 w-4" />
+                            <span>Copiado!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-4 w-4" />
+                            <span>Copiar Texto</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
                   </div>
                 </div>
 
-                {/* Conteúdo do Texto */}
-                <div className="relative z-10 flex-1 overflow-y-auto custom-scroll max-h-[400px]">
-                  <p className="text-xs sm:text-sm text-slate-300 font-inter leading-8 font-light whitespace-pre-line pr-2 selection:bg-cyan-300/30">
-                    {selectedTranscription.transcription_text}
-                  </p>
+                {/* Coluna da Direita: Texto Transcrito com Tipografia Ampliada */}
+                <div className="lg:col-span-8 w-full rounded-[2rem] border border-white/[0.08] bg-[#090f1a]/70 p-6 sm:p-8 backdrop-blur-2xl relative shadow-xl overflow-hidden flex flex-col h-[520px] group transition-all duration-300 hover:border-cyan-400/20">
+                  <div className="absolute inset-0 opacity-[0.015] pointer-events-none" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px)', backgroundSize: '30px 30px' }}></div>
+                  
+                  {/* Cabeçalho do Resultado */}
+                  <div className="relative z-10 flex items-center justify-between pb-4 border-b border-white/[0.06] mb-5 shrink-0">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-6 h-6 rounded-full bg-cyan-400/[0.12] flex items-center justify-center text-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.15)]">
+                        <Sparkles className="h-3.5 w-3.5" />
+                      </span>
+                      <span className="text-[10px] font-mono-jb text-cyan-300 uppercase tracking-widest font-semibold">Texto Transcrito por Inteligência Artificial</span>
+                    </div>
+                  </div>
+
+                  {/* Conteúdo do Texto Ampliado */}
+                  <div className="relative z-10 flex-1 overflow-y-auto custom-scroll pr-2">
+                    <p className="text-sm sm:text-base md:text-[17px] text-slate-300 font-inter leading-8 font-light whitespace-pre-line pr-2 selection:bg-cyan-300/30">
+                      {selectedTranscription.transcription_text}
+                    </p>
+                  </div>
                 </div>
+
               </div>
             </div>
           ) : (
             
-            /* Caso 3: Área de Upload Principal */
-            <div className="flex-1 flex flex-col items-center justify-center max-w-lg mx-auto w-full space-y-6">
-              
-              {/* Header de Introdução */}
-              <div className="text-center space-y-2">
-                <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-white/[0.06] bg-slate-950/60 px-3 py-1.5 text-[9px] text-slate-400 font-geist shadow-xl backdrop-blur-xl">
-                  <span className="w-4 h-4 rounded-full bg-cyan-400/20 border border-cyan-400 flex items-center justify-center text-[9px] text-cyan-300">★</span>
-                  <span>PREMIUM AUDIO CONVERSION</span>
-                </div>
-                <h2 className="text-2xl sm:text-3xl font-light tracking-[-0.04em] text-white font-jakarta">
-                  Transcreva seu <span className="font-semibold text-cyan-400">Áudio</span>
-                </h2>
-                <p className="text-xs text-slate-400 font-geist max-w-xs mx-auto leading-relaxed">
-                  Envie notas de voz, reuniões ou aulas e obtenha o texto instantaneamente com precisão cirúrgica.
-                </p>
-              </div>
-
-              {/* Caixa Drag and Drop de Vidro */}
-              <div 
-                onDragEnter={handleDrag} 
-                onDragOver={handleDrag} 
-                onDragLeave={handleDrag} 
-                onDrop={handleDrop}
-                onClick={triggerSelectFile}
-                className={`relative w-full aspect-video sm:h-64 rounded-[2rem] border border-dashed transition-all duration-300 flex flex-col items-center justify-center p-6 text-center cursor-pointer overflow-hidden group bg-[#090f1a]/40 ${
-                  isDragActive 
-                    ? 'border-cyan-400 bg-cyan-400/[0.03] shadow-[0_0_20px_rgba(34,211,238,0.15)] scale-[1.01]' 
-                    : 'border-white/10 hover:border-cyan-400/40 hover:bg-[#090f1a]/70 hover:shadow-[0_0_15px_rgba(34,211,238,0.05)]'
-                }`}
-              >
-                {/* Dot grid de fundo sutil */}
-                <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '1.25rem 1.25rem' }}></div>
+            /* Caso 3: Área de Upload Principal (Layout Lado a Lado / Fontes Ampliadas) */
+            <div className="flex-1 w-full max-w-5xl mx-auto flex flex-col justify-center py-6 relative z-10">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 lg:items-stretch">
                 
-                {/* Hidden File Input */}
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                  accept=".mp3,.m4a,.wav,.webm"
-                  className="hidden"
-                />
-
-                <div className="relative z-10 space-y-4">
-                  <div className="inline-flex w-12 h-12 rounded-full bg-white/[0.02] group-hover:bg-cyan-500/10 border border-white/10 group-hover:border-cyan-400/30 items-center justify-center text-slate-400 group-hover:text-cyan-400 transition-all duration-300 group-hover:scale-105 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                    <UploadCloud className="h-6 w-6" />
-                  </div>
-                  
-                  <div className="space-y-1">
-                    <p className="text-xs font-semibold text-slate-200 group-hover:text-cyan-300 transition font-geist">
-                      {isDragActive ? 'Solte o arquivo para iniciar' : 'Arraste seu arquivo de áudio aqui'}
-                    </p>
-                    <p className="text-[10px] text-slate-500 font-geist">
-                      ou clique para procurar em seu dispositivo
+                {/* Coluna da Esquerda: Introdução e Informações */}
+                <div className="lg:col-span-5 space-y-8 text-left">
+                  <div className="space-y-4">
+                    <h2 className="text-4xl lg:text-5xl font-light tracking-[-0.04em] text-white font-jakarta leading-tight">
+                      Transcreva seu <br className="hidden lg:inline" />
+                      <span className="font-semibold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500">Áudio com IA</span>
+                    </h2>
+                    <p className="text-base text-slate-400 font-geist font-light leading-relaxed max-w-md">
+                      Envie notas de voz do iPhone, reuniões longas ou aulas de faculdade e obtenha a transcrição textual instantaneamente com alta precisão e pontuação inteligente.
                     </p>
                   </div>
-                  
-                  <div className="flex flex-wrap justify-center gap-1.5 text-[8px] font-mono-jb text-slate-500">
-                    <span className="px-1.5 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded uppercase">MP3</span>
-                    <span className="px-1.5 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded uppercase">M4A (iOS)</span>
-                    <span className="px-1.5 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded uppercase">WAV</span>
-                    <span className="px-1.5 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded uppercase">WEBM</span>
+
+                  {/* Banner Informativo / Recomendações em coluna vertical estilizada */}
+                  <div className="space-y-4 max-w-md">
+                    <div className="rounded-2xl border border-white/[0.06] bg-[#090f1a]/50 p-5 space-y-2 relative overflow-hidden transition hover:border-cyan-400/20 group">
+                      <div className="flex items-center gap-2 text-[10px] font-mono-jb text-cyan-300 uppercase tracking-wider font-semibold">
+                        <HardDrive className="h-4 w-4 text-cyan-400" />
+                        <span>Limite de 25 MB</span>
+                      </div>
+                      <p className="text-xs text-slate-400 font-geist leading-relaxed">
+                        A API OpenAI possui um limite máximo de <strong>25 MB</strong> por arquivo. Certifique-se de realizar o fatiamento ou compactação prévia de áudios extremamente longos.
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/[0.06] bg-[#090f1a]/50 p-5 space-y-2 relative overflow-hidden transition hover:border-cyan-400/20 group">
+                      <div className="flex items-center gap-2 text-[10px] font-mono-jb text-cyan-300 uppercase tracking-wider font-semibold">
+                        <PlayCircle className="h-4 w-4 text-cyan-400" />
+                        <span>Formatos Compatíveis</span>
+                      </div>
+                      <p className="text-xs text-slate-400 font-geist leading-relaxed">
+                        Suporte completo para formatos de áudio gravados pelo iPhone (Notas de Voz em `.m4a`) e outros formatos padrão da web: `.mp3`, `.wav` e `.webm`.
+                      </p>
+                    </div>
                   </div>
                 </div>
+
+                {/* Coluna da Direita: Área de Upload */}
+                <div className="lg:col-span-7 space-y-4 w-full flex flex-col">
+                  {/* Caixa Drag and Drop de Vidro Expandida */}
+                  <div 
+                    onDragEnter={handleDrag} 
+                    onDragOver={handleDrag} 
+                    onDragLeave={handleDrag} 
+                    onDrop={handleDrop}
+                    onClick={triggerSelectFile}
+                    className={`relative w-full flex-1 h-full min-h-[380px] rounded-[2rem] border border-dashed transition-all duration-300 flex flex-col items-center justify-center p-8 text-center cursor-pointer overflow-hidden group bg-[#090f1a]/45 ${
+                      isDragActive 
+                        ? 'border-cyan-400 bg-cyan-400/[0.03] shadow-[0_0_25px_rgba(34,211,238,0.18)] scale-[1.01]' 
+                        : 'border-white/10 hover:border-cyan-400/40 hover:bg-[#090f1a]/70 hover:shadow-[0_0_20px_rgba(34,211,238,0.06)]'
+                    }`}
+                  >
+                    {/* Dot grid de fundo sutil */}
+                    <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '1.5rem 1.5rem' }}></div>
+                    
+                    {/* Hidden File Input */}
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileChange}
+                      accept=".mp3,.m4a,.wav,.webm"
+                      className="hidden"
+                    />
+
+                    <div className="relative z-10 space-y-5">
+                      <div className="inline-flex w-16 h-16 rounded-full bg-white/[0.02] group-hover:bg-cyan-500/10 border border-white/10 group-hover:border-cyan-400/30 items-center justify-center text-slate-400 group-hover:text-cyan-400 transition-all duration-300 group-hover:scale-105 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                        <UploadCloud className="h-8 w-8 text-slate-400 group-hover:text-cyan-400 transition-all" />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <p className="text-sm font-semibold text-slate-200 group-hover:text-cyan-300 transition font-geist">
+                          {isDragActive ? 'Solte o arquivo para carregar' : 'Arraste seu arquivo de áudio aqui'}
+                        </p>
+                        <p className="text-xs text-slate-400 font-geist max-w-[240px] mx-auto leading-relaxed">
+                          ou clique para navegar pelos arquivos do seu dispositivo
+                        </p>
+                      </div>
+                      
+                      <div className="flex flex-wrap justify-center gap-2 text-[9px] font-mono-jb text-slate-500 pt-2">
+                        <span className="px-2 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded-full uppercase">MP3</span>
+                        <span className="px-2 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded-full uppercase">M4A (iOS)</span>
+                        <span className="px-2 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded-full uppercase">WAV</span>
+                        <span className="px-2 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded-full uppercase">WEBM</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Caixa de Erro */}
+                  {fileError && (
+                    <div className="w-full flex items-center gap-3 rounded-2xl bg-red-950/20 p-4 text-xs text-red-300 border border-red-500/15 font-geist transition-all animate-pulse">
+                      <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
+                      <p>{fileError}</p>
+                    </div>
+                  )}
+                </div>
+
               </div>
-
-              {/* Caixa de Erro */}
-              {fileError && (
-                <div className="w-full flex items-center gap-3 rounded-xl bg-red-950/20 p-4 text-xs text-red-300 border border-red-500/15 font-geist transition-all animate-pulse">
-                  <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
-                  <p>{fileError}</p>
-                </div>
-              )}
-
-              {/* Banner Informativo / Recomendações */}
-              <div className="w-full grid grid-cols-2 gap-4">
-                <div className="rounded-2xl border border-white/[0.06] bg-[#090f1a]/40 p-4 space-y-1">
-                  <div className="flex items-center gap-1.5 text-[9px] font-mono-jb text-slate-500 uppercase font-semibold">
-                    <HardDrive className="h-3 w-3 text-cyan-400" />
-                    <span>Limite de Tamanho</span>
-                  </div>
-                  <p className="text-[10px] text-slate-400 font-geist leading-relaxed">
-                    A API OpenAI limita arquivos a <strong>25 MB</strong>. Para arquivos maiores, faça fatiamento prévio.
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-white/[0.06] bg-[#090f1a]/40 p-4 space-y-1">
-                  <div className="flex items-center gap-1.5 text-[9px] font-mono-jb text-slate-500 uppercase font-semibold">
-                    <PlayCircle className="h-3 w-3 text-cyan-400" />
-                    <span>Formatos de Áudio</span>
-                  </div>
-                  <p className="text-[10px] text-slate-400 font-geist leading-relaxed">
-                    Compatível com gravações nativas do Gravador de Voz do iPhone 15 e outros formatos padrão.
-                  </p>
-                </div>
-              </div>
-
             </div>
           )}
 
