@@ -36,6 +36,7 @@ export async function proxy(request: NextRequest) {
   const isApiOrStatic = 
     request.nextUrl.pathname.startsWith('/api') || 
     request.nextUrl.pathname.startsWith('/_next') || 
+    request.nextUrl.pathname.startsWith('/auth') || 
     request.nextUrl.pathname.includes('.');
 
   // Se o usuário não estiver autenticado e tentar acessar qualquer página que não seja /login

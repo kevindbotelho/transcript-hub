@@ -11,9 +11,9 @@
 ## MVP (Mínimo Produto Viável)
 
 ### 1. Autenticação e Segurança
-- [ ] Criação do projeto no Supabase e configuração de tabelas/RLS
-- [ ] Integração do Supabase Auth no Next.js
-- [ ] Tela de Login (`/login`) protegida por e-mail e senha
+- [x] Criação do projeto no Supabase e configuração de tabelas/RLS
+- [x] Integração do Supabase Auth no Next.js
+- [x] Tela de Login (`/login`) protegida por e-mail e senha
 - [ ] Bloqueio de registros públicos (somente contas criadas manualmente pelo admin ou lista de convidados)
 
 ### 2. Dashboard e Área de Upload
