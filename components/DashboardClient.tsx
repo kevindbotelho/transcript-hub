@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   AudioLines, 
   Search, 
@@ -33,36 +33,9 @@ interface DashboardClientProps {
   userEmail: string;
 }
 
-// Lista de transcrições iniciais para demonstração visual rica
-const INITIAL_MOCK_TRANSCRIPTIONS: Transcription[] = [
-  {
-    id: '1',
-    file_name: 'Aula_de_Quimica_Organica_Parte_2.mp3',
-    file_size: 18456000,
-    audio_duration: 3650,
-    transcription_text: 'Olá a todos. Na aula de hoje nós vamos dar continuidade ao estudo dos compostos de carbono, focando especificamente nas reações de substituição nucleofílica. As reações do tipo SN1 e SN2 são fundamentais para compreender como podemos sintetizar diferentes moléculas orgânicas a partir de haletos de alquila. A velocidade da reação SN1 depende unicamente da concentração do substrato, visto que a etapa determinante envolve a formação de um carbocátion intermediário estável. Já na SN2, temos um processo concertado de etapa única, onde o nucleófilo ataca o carbono pelo lado oposto ao grupo de saída simultaneamente.',
-    created_at: '2026-06-02T14:32:00Z',
-  },
-  {
-    id: '2',
-    file_name: 'Reuniao_Alinhamento_Semanal_Marketing.wav',
-    file_size: 24100000,
-    audio_duration: 1820,
-    transcription_text: 'Bom dia equipe. Revisando os KPIs da última semana, percebemos um aumento de 15% na taxa de conversão das nossas campanhas de tráfego pago no Instagram. O novo criativo utilizando depoimentos de clientes performou muito acima do esperado, reduzindo o nosso CAC em quase 12%. Para a próxima sprint, o foco principal será estruturar a landing page do novo produto e iniciar os testes com o público B2B no LinkedIn. O orçamento para essa frente está aprovado e a equipe de design deve entregar os mockups de alta fidelidade até quinta-feira.',
-    created_at: '2026-06-01T09:15:00Z',
-  },
-  {
-    id: '3',
-    file_name: 'Gravação_de_Voz_Ideias_App_Transcrições.m4a',
-    file_size: 4200000,
-    audio_duration: 450,
-    transcription_text: 'Ideia para o Transcript Hub: Seria incrível adicionar uma funcionalidade de resumo automático utilizando IA diretamente na tela de resultado. Algo como um botão "Gerar Resumo" que envie o texto para o GPT-4o-mini e traga tópicos principais, pontos de ação e tarefas pendentes. Isso pouparia muito tempo de quem grava reuniões ou aulas inteiras. Outra coisa seria a divisão de locutores para o futuro, ajudando a identificar quem falou o quê. Preciso mapear isso no backlog do PRD.',
-    created_at: '2026-05-30T18:40:00Z',
-  },
-];
-
 export default function DashboardClient({ userEmail }: DashboardClientProps) {
-  const [transcriptions, setTranscriptions] = useState<Transcription[]>(INITIAL_MOCK_TRANSCRIPTIONS);
+  const [transcriptions, setTranscriptions] = useState<Transcription[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -77,6 +50,26 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
   
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Carregar histórico de transcrições do Supabase
+  useEffect(() => {
+    async function fetchTranscriptions() {
+      try {
+        const response = await fetch('/api/transcriptions');
+        if (response.ok) {
+          const data = await response.json();
+          setTranscriptions(data);
+        } else {
+          console.error('Falha ao carregar o histórico de transcrições.');
+        }
+      } catch (err) {
+        console.error('Erro ao buscar transcrições:', err);
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    }
+    fetchTranscriptions();
+  }, []);
 
   // Formata o tamanho do arquivo
   const formatFileSize = (bytes: number): string => {
@@ -137,7 +130,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
   };
 
   // Valida e processa o arquivo selecionado
-  const processFile = (file: File) => {
+  const processFile = async (file: File) => {
     setFileError(null);
     
     // Suporte a múltiplos formatos suportados e Notas de voz iOS (.m4a)
@@ -156,46 +149,66 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
       return;
     }
 
-    // Inicia fluxo simulado de processamento/transcrição por IA
+    // Inicia fluxo de processamento/transcrição real por IA
     setIsProcessing(true);
     setProcessingProgress(10);
-    setProcessingStatus('Carregando arquivo de áudio...');
+    setProcessingStatus('Preparando arquivo para upload...');
     setSelectedId(null);
 
-    // Passo 1: Upload / Buffer do arquivo no servidor
-    setTimeout(() => {
-      setProcessingProgress(40);
-      setProcessingStatus('Conectando à API do Next.js e preparando payload...');
-      
-      // Passo 2: Chamada ao endpoint da OpenAI (Processando Áudio com gpt-4o-mini-transcribe)
-      setTimeout(() => {
-        setProcessingProgress(75);
-        setProcessingStatus('IA transcrevendo áudio (gpt-4o-mini-transcribe)...');
-        
-        // Passo 3: Gravação do resultado no Supabase e finalização
-        setTimeout(() => {
-          setProcessingProgress(100);
-          setProcessingStatus('Finalizado! Salvando no banco de dados...');
-          
-          setTimeout(() => {
-            const newId = Date.now().toString();
-            const newTranscription: Transcription = {
-              id: newId,
-              file_name: file.name,
-              file_size: file.size,
-              audio_duration: Math.floor(Math.random() * 900) + 120, // Simula duração entre 2 e 17 min
-              transcription_text: `[Transcrição gerada por IA] Este é um texto simulado representando a transcrição bem-sucedida do arquivo "${file.name}". A transcrição de áudio por inteligência artificial da OpenAI funciona processando os buffers do arquivo e convertendo fonemas em texto estruturado com pontuação inteligente e alta taxa de precisão, ideal para reuniões, notas rápidas e aulas de faculdade.`,
-              created_at: new Date().toISOString(),
-            };
+    // Variável para incrementar o progresso fictício enquanto a chamada da API está pendente
+    let progressInterval: NodeJS.Timeout;
 
-            setTranscriptions(prev => [newTranscription, ...prev]);
-            setSelectedId(newId);
-            setIsProcessing(false);
-            setProcessingProgress(0);
-          }, 800);
-        }, 1200);
-      }, 1500);
-    }, 1200);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      setProcessingProgress(30);
+      setProcessingStatus('Enviando áudio para transcrição (este processo pode demorar alguns minutos)...');
+
+      // Progresso simulado incremental enquanto espera a resposta
+      progressInterval = setInterval(() => {
+        setProcessingProgress((prev) => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90;
+          }
+          return prev + 5;
+        });
+      }, 1000);
+
+      const response = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData,
+      });
+
+      clearInterval(progressInterval);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Ocorreu um erro ao processar a transcrição.');
+      }
+
+      setProcessingProgress(95);
+      setProcessingStatus('Gravando histórico no Supabase...');
+
+      const newTranscription: Transcription = await response.json();
+
+      setProcessingProgress(100);
+      setProcessingStatus('Concluído!');
+
+      setTimeout(() => {
+        setTranscriptions((prev) => [newTranscription, ...prev]);
+        setSelectedId(newTranscription.id);
+        setIsProcessing(false);
+        setProcessingProgress(0);
+      }, 500);
+
+    } catch (err: any) {
+      console.error('Erro no processamento do áudio:', err);
+      setFileError(err.message || 'Falha ao processar o áudio.');
+      setIsProcessing(false);
+      setProcessingProgress(0);
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -280,7 +293,12 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
             Histórico de Áudios
           </div>
           
-          {filteredTranscriptions.length === 0 ? (
+          {isLoadingHistory ? (
+            <div className="flex flex-col items-center justify-center p-6 space-y-2 text-slate-500">
+              <Loader2 className="h-5 w-5 animate-spin text-cyan-400" />
+              <span className="text-[10px] font-geist">Carregando histórico...</span>
+            </div>
+          ) : filteredTranscriptions.length === 0 ? (
             <div className="p-4 text-center text-xs text-slate-500 font-geist font-light">
               Nenhuma transcrição encontrada
             </div>

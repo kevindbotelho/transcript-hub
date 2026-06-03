@@ -14,7 +14,7 @@
 - [x] Criação do projeto no Supabase e configuração de tabelas/RLS
 - [x] Integração do Supabase Auth no Next.js
 - [x] Tela de Login (`/login`) protegida por e-mail e senha
-- [ ] Bloqueio de registros públicos (somente contas criadas manualmente pelo admin ou lista de convidados)
+- [x] Bloqueio de registros públicos (configurado no console do Supabase Auth desabilitando novos cadastros autônomos)
 
 ### 2. Dashboard e Área de Upload
 - [x] Layout principal com sidebar de histórico e área central

@@ -27,21 +27,60 @@ body {
   color: var(--foreground);
 }
 
-/* Custom Scrollbar */
+/* Custom Scrollbar - Global & Element Specific */
+/* Firefox Support */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) rgba(8, 12, 20, 0.5);
+}
+
+/* Chrome, Safari, Edge, Opera Support */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #080c14; /* fundo correspondente ao background principal */
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  border: 2px solid #080c14; /* Cria uma margem sutil para parecer flutuante */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(34, 211, 238, 0.4); /* ciano-400 do design system */
+}
+
+/* Custom Scrollbar class for finer, internal containers */
 .custom-scroll::-webkit-scrollbar {
   height: 6px;
   width: 6px;
 }
+
 .custom-scroll::-webkit-scrollbar-track {
   background: rgba(255, 255, 255, 0.02);
   border-radius: 999px;
 }
+
 .custom-scroll::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.12);
   border-radius: 999px;
+  border: none;
 }
+
 .custom-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(34, 211, 238, 0.4);
+  background: rgba(34, 211, 238, 0.45);
+}
+
+/* Firefox custom-scroll specific styling override if supported */
+@supports (scrollbar-width: thin) {
+  .custom-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.12) rgba(255, 255, 255, 0.02);
+  }
 }
 
 /* Aura & Pulse Animations and Blobs */

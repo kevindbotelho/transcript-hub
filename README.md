@@ -17,7 +17,7 @@ A interface do Transcript Hub segue um Living Design System híbrido personaliza
 - **Framework**: [Next.js](https://nextjs.org) (App Router com TypeScript)
 - **Estilização**: Tailwind CSS
 - **Banco de Dados & Auth**: [Supabase](https://supabase.com) (PostgreSQL & Supabase Auth)
-- **Processamento de Áudio**: OpenAI API (`gpt-4o-mini-transcribe`)
+- **Processamento de Áudio**: OpenAI API (`whisper-1`)
 - **Biblioteca de Ícones**: Lucide React
 
 ---
