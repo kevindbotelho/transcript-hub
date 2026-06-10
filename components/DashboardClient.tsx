@@ -17,7 +17,9 @@ import {
   PlayCircle,
   Sparkles,
   Loader2,
-  ArrowLeft
+  ArrowLeft,
+  Minimize2,
+  Maximize2
 } from 'lucide-react';
 
 interface Transcription {
@@ -27,6 +29,15 @@ interface Transcription {
   audio_duration: number | null; // em segundos
   transcription_text: string;
   created_at: string;
+}
+
+interface QueueItem {
+  id: string;
+  file: File;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  progress: number;
+  error?: string;
+  transcriptionId?: string;
 }
 
 interface DashboardClientProps {
@@ -43,10 +54,9 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
   const [isDragActive, setIsDragActive] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   
-  // Estados de Processamento
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [processingStatus, setProcessingStatus] = useState('');
-  const [processingProgress, setProcessingProgress] = useState(0);
+  // Estados da Fila de Processamento
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [isQueueOpen, setIsQueueOpen] = useState(true);
   
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -129,51 +139,40 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
     }
   };
 
-  // Valida e processa o arquivo selecionado
-  const processFile = async (file: File) => {
-    setFileError(null);
-    
-    // Suporte a múltiplos formatos suportados e Notas de voz iOS (.m4a)
-    const allowedExtensions = ['.mp3', '.m4a', '.wav', '.webm'];
-    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
-    
-    if (!allowedExtensions.includes(fileExtension)) {
-      setFileError('Formato inválido. Insira um arquivo .mp3, .m4a, .wav ou .webm');
-      return;
+  // Loop de processamento sequencial da fila
+  useEffect(() => {
+    const processingItem = queue.find(item => item.status === 'processing');
+    if (processingItem) return;
+
+    const nextPendingItem = queue.find(item => item.status === 'pending');
+    if (nextPendingItem) {
+      processQueueItem(nextPendingItem.id);
     }
+  }, [queue]);
 
-    // Limite da OpenAI de 25 MB (25 * 1024 * 1024 bytes)
-    const maxSizeBytes = 25 * 1024 * 1024;
-    if (file.size > maxSizeBytes) {
-      setFileError('Arquivo muito grande. O limite máximo da API é de 25 MB.');
-      return;
-    }
+  // Função para processar um item específico da fila
+  const processQueueItem = async (id: string) => {
+    const item = queue.find(q => q.id === id);
+    if (!item) return;
 
-    // Inicia fluxo de processamento/transcrição real por IA
-    setIsProcessing(true);
-    setProcessingProgress(10);
-    setProcessingStatus('Preparando arquivo para upload...');
-    setSelectedId(null);
+    // Atualiza status para 'processing'
+    setQueue(prev => prev.map(q => q.id === id ? { ...q, status: 'processing', progress: 10 } : q));
 
-    // Variável para incrementar o progresso fictício enquanto a chamada da API está pendente
-    let progressInterval: NodeJS.Timeout;
+    let progressInterval: NodeJS.Timeout | undefined;
 
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', item.file);
 
-      setProcessingProgress(30);
-      setProcessingStatus('Enviando áudio para transcrição (este processo pode demorar alguns minutos)...');
-
-      // Progresso simulado incremental enquanto espera a resposta
+      // Progresso simulado incremental
       progressInterval = setInterval(() => {
-        setProcessingProgress((prev) => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return 90;
+        setQueue(prev => prev.map(q => {
+          if (q.id === id) {
+            const nextProgress = q.progress >= 90 ? 90 : q.progress + 5;
+            return { ...q, progress: nextProgress };
           }
-          return prev + 5;
-        });
+          return q;
+        }));
       }, 1000);
 
       const response = await fetch('/api/transcribe', {
@@ -181,33 +180,81 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
         body: formData,
       });
 
-      clearInterval(progressInterval);
+      if (progressInterval) clearInterval(progressInterval);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || 'Ocorreu um erro ao processar a transcrição.');
       }
 
-      setProcessingProgress(95);
-      setProcessingStatus('Gravando histórico no Supabase...');
-
       const newTranscription: Transcription = await response.json();
 
-      setProcessingProgress(100);
-      setProcessingStatus('Concluído!');
+      setQueue(prev => prev.map(q => q.id === id ? { 
+        ...q, 
+        status: 'completed', 
+        progress: 100, 
+        transcriptionId: newTranscription.id 
+      } : q));
 
-      setTimeout(() => {
-        setTranscriptions((prev) => [newTranscription, ...prev]);
-        setSelectedId(newTranscription.id);
-        setIsProcessing(false);
-        setProcessingProgress(0);
-      }, 500);
+      // Grava histórico no estado local
+      setTranscriptions(prev => [newTranscription, ...prev]);
+
+      // Abre automaticamente se o usuário não estiver com nenhuma transcrição selecionada
+      setSelectedId(prev => prev === null ? newTranscription.id : prev);
 
     } catch (err: any) {
-      console.error('Erro no processamento do áudio:', err);
-      setFileError(err.message || 'Falha ao processar o áudio.');
-      setIsProcessing(false);
-      setProcessingProgress(0);
+      console.error('Erro ao processar áudio na fila:', err);
+      if (progressInterval) clearInterval(progressInterval);
+      setQueue(prev => prev.map(q => q.id === id ? { 
+        ...q, 
+        status: 'failed', 
+        progress: 0, 
+        error: err.message || 'Falha ao processar o áudio.' 
+      } : q));
+    }
+  };
+
+  // Valida e enfileira múltiplos arquivos
+  const enqueueFiles = (files: FileList | File[]) => {
+    setFileError(null);
+    const filesArray = Array.from(files);
+    
+    if (filesArray.length === 0) return;
+
+    const allowedExtensions = ['.mp3', '.m4a', '.wav', '.webm'];
+    const maxSizeBytes = 25 * 1024 * 1024; // 25 MB
+
+    const newItems: QueueItem[] = [];
+
+    filesArray.forEach((file) => {
+      const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+      const hasValidExtension = allowedExtensions.includes(fileExtension);
+      const hasValidSize = file.size <= maxSizeBytes;
+
+      let status: 'pending' | 'failed' = 'pending';
+      let errorMsg: string | undefined = undefined;
+
+      if (!hasValidExtension) {
+        status = 'failed';
+        errorMsg = 'Formato inválido (insira .mp3, .m4a, .wav ou .webm).';
+      } else if (!hasValidSize) {
+        status = 'failed';
+        errorMsg = 'Arquivo muito grande (máximo de 25 MB).';
+      }
+
+      newItems.push({
+        id: Math.random().toString(36).substring(2, 9),
+        file,
+        status,
+        progress: 0,
+        error: errorMsg
+      });
+    });
+
+    if (newItems.length > 0) {
+      setIsQueueOpen(true);
+      setQueue(prev => [...prev, ...newItems]);
+      setSelectedId(null);
     }
   };
 
@@ -216,14 +263,14 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
     e.stopPropagation();
     setIsDragActive(false);
 
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      processFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      enqueueFiles(e.dataTransfer.files);
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      processFile(e.target.files[0]);
+    if (e.target.files && e.target.files.length > 0) {
+      enqueueFiles(e.target.files);
     }
   };
 
@@ -401,39 +448,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
         {/* Conteúdo Principal */}
         <div className="flex-1 overflow-y-auto custom-scroll p-6 md:p-8 flex flex-col">
           
-          {/* Caso 1: Loader de Carregamento/Processamento */}
-          {isProcessing ? (
-            <div className="flex-1 flex flex-col items-center justify-center max-w-lg mx-auto w-full text-center space-y-6">
-              <div className="relative flex items-center justify-center w-20 h-20">
-                {/* Efeito radar brilhante */}
-                <div className="absolute inset-0 rounded-full border border-cyan-400 animate-ping opacity-25"></div>
-                <div className="w-16 h-16 rounded-full bg-cyan-500/10 border border-cyan-400/35 flex items-center justify-center text-cyan-400">
-                  <Loader2 className="h-7 w-7 animate-spin" />
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <h3 className="text-lg font-medium text-white font-jakarta tracking-tight">Processando seu Áudio</h3>
-                <p className="text-xs text-slate-400 font-geist max-w-xs mx-auto leading-relaxed">
-                  {processingStatus}
-                </p>
-              </div>
-
-              {/* Barra de progresso baseada no design-system */}
-              <div className="w-full max-w-xs space-y-1.5">
-                <div className="flex justify-between text-[9px] font-mono-jb text-slate-500">
-                  <span>Progresso</span>
-                  <span className="text-cyan-300">{processingProgress}%</span>
-                </div>
-                <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden">
-                  <div 
-                    className="h-full bg-cyan-400 transition-all duration-500" 
-                    style={{ width: `${processingProgress}%` }}
-                  ></div>
-                </div>
-              </div>
-            </div>
-          ) : selectedTranscription ? (
+          {selectedTranscription ? (
             
             /* Caso 2: Visualização de Transcrição Selecionada (Layout Lado a Lado / Fontes Ampliadas) */
             <div className="flex-1 w-full max-w-5xl mx-auto flex flex-col justify-center py-4 relative z-10 animate-fade-in">
@@ -593,6 +608,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                       ref={fileInputRef}
                       onChange={handleFileChange}
                       accept=".mp3,.m4a,.wav,.webm"
+                      multiple
                       className="hidden"
                     />
 
@@ -635,6 +651,116 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
         </div>
 
       </main>
+
+      {/* ==========================================
+           3. PAINEL FLUTUANTE DE FILA (UPLOAD)
+           ========================================== */}
+      {queue.length > 0 && (
+        <div className="fixed bottom-6 right-6 z-50 w-96 bg-[#090f1a]/95 backdrop-blur-2xl border border-white/10 shadow-2xl rounded-2xl overflow-hidden transition-all duration-300">
+          
+          {/* Cabeçalho do Painel */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-white/[0.02]">
+            <div className="flex items-center gap-2">
+              {queue.some(q => q.status === 'processing' || q.status === 'pending') ? (
+                <Loader2 className="h-4 w-4 text-cyan-400 animate-spin" />
+              ) : (
+                <Check className="h-4 w-4 text-emerald-400" />
+              )}
+              <span className="text-xs font-semibold text-white font-jakarta">
+                {queue.some(q => q.status === 'processing' || q.status === 'pending') 
+                  ? 'Transcrevendo áudios...' 
+                  : 'Transcrições finalizadas'}
+              </span>
+              <span className="text-[10px] bg-cyan-400/10 text-cyan-300 px-1.5 py-0.5 rounded-full font-mono">
+                {queue.filter(q => q.status === 'completed').length}/{queue.length}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button 
+                onClick={() => setIsQueueOpen(!isQueueOpen)} 
+                title={isQueueOpen ? "Minimizar" : "Expandir"}
+                className="p-1 rounded text-slate-400 hover:text-white hover:bg-white/5 transition cursor-pointer"
+              >
+                {isQueueOpen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+              </button>
+              {!queue.some(q => q.status === 'pending' || q.status === 'processing') && (
+                <button 
+                  onClick={() => setQueue([])} 
+                  title="Fechar painel"
+                  className="p-1 rounded text-slate-400 hover:text-red-400 hover:bg-white/5 transition cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Lista de Arquivos (Corpo) */}
+          {isQueueOpen && (
+            <div className="p-3 max-h-72 overflow-y-auto custom-scroll space-y-2.5 bg-slate-950/20">
+              {queue.map((item) => (
+                <div key={item.id} className="space-y-1.5 text-left text-xs">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-slate-200 truncate pr-2" title={item.file.name}>
+                        {item.file.name}
+                      </p>
+                      <p className="text-[9px] text-slate-500 font-mono">
+                        {formatFileSize(item.file.size)}
+                      </p>
+                    </div>
+                    
+                    <div className="shrink-0 flex items-center gap-1.5">
+                      {item.status === 'pending' && (
+                        <span className="text-slate-500 flex items-center gap-1 text-[10px] font-mono">
+                          <Clock className="h-3.5 w-3.5" />
+                          Aguardando
+                        </span>
+                      )}
+                      {item.status === 'processing' && (
+                        <span className="text-cyan-400 flex items-center gap-1 text-[10px] font-mono font-semibold animate-pulse">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          {item.progress}%
+                        </span>
+                      )}
+                      {item.status === 'completed' && (
+                        <button
+                          onClick={() => item.transcriptionId && setSelectedId(item.transcriptionId)}
+                          className="text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/20 flex items-center gap-1 text-[9px] font-medium transition cursor-pointer"
+                        >
+                          <Check className="h-3 w-3" />
+                          Visualizar
+                        </button>
+                      )}
+                      {item.status === 'failed' && (
+                        <span className="text-red-400 flex items-center gap-1 text-[10px] font-mono" title={item.error}>
+                          <AlertCircle className="h-3.5 w-3.5" />
+                          Falhou
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {item.status === 'processing' && (
+                    <div className="h-1 rounded-full bg-white/5 overflow-hidden">
+                      <div 
+                        className="h-full bg-cyan-400 transition-all duration-300"
+                        style={{ width: `${item.progress}%` }}
+                      ></div>
+                    </div>
+                  )}
+                  
+                  {item.status === 'failed' && item.error && (
+                    <p className="text-[9px] text-red-300 leading-tight bg-red-950/20 p-1.5 rounded border border-red-500/10">
+                      {item.error}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
     </div>
   );
