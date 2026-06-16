@@ -20,7 +20,7 @@ export async function GET() {
     // Buscar as transcrições ordenadas da mais recente para a mais antiga
     const { data: transcriptions, error } = await supabase
       .from('transcriptions')
-      .select('id, file_name, file_size, audio_duration, transcription_text, created_at')
+      .select('id, file_name, file_size, audio_duration, transcription_text, created_at, title, is_pinned, folder_id')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
 

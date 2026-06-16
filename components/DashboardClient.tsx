@@ -19,7 +19,18 @@ import {
   Loader2,
   ArrowLeft,
   Minimize2,
-  Maximize2
+  Maximize2,
+  Folder,
+  FolderOpen,
+  FolderPlus,
+  Pin,
+  PinOff,
+  Trash2,
+  Edit2,
+  MoreVertical,
+  Plus,
+  ArrowUpDown,
+  ChevronRight
 } from 'lucide-react';
 
 interface Transcription {
@@ -28,6 +39,15 @@ interface Transcription {
   file_size: number;
   audio_duration: number | null; // em segundos
   transcription_text: string;
+  created_at: string;
+  title?: string | null;
+  is_pinned?: boolean;
+  folder_id?: string | null;
+}
+
+interface Folder {
+  id: string;
+  name: string;
   created_at: string;
 }
 
@@ -45,10 +65,47 @@ interface DashboardClientProps {
 }
 
 export default function DashboardClient({ userEmail }: DashboardClientProps) {
+  // Separar o nome do arquivo da extensão para renomeação padrão macOS
+  const getBaseAndExt = (filename: string) => {
+    const idx = filename.lastIndexOf('.');
+    if (idx === -1) return { base: filename, ext: '' };
+    return { base: filename.substring(0, idx), ext: filename.substring(idx) };
+  };
+
   const [transcriptions, setTranscriptions] = useState<Transcription[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Estados de Pastas & Filtros
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<'date' | 'alphabetical'>('date');
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  
+  // Estados de Menus e Edições
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isEditingDetails, setIsEditingDetails] = useState(false);
+  const [editingTitle, setEditingTitle] = useState('');
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [editingFolderName, setEditingFolderName] = useState('');
+
+  // Estado do Modal de Confirmação de Exclusão
+  const [deleteModal, setDeleteModal] = useState<{
+    isOpen: boolean;
+    type: 'folder' | 'transcription';
+    id: string;
+    title: string;
+    message: string;
+  }>({
+    isOpen: false,
+    type: 'folder',
+    id: '',
+    title: '',
+    message: ''
+  });
   
   // Estados de Upload
   const [isDragActive, setIsDragActive] = useState(false);
@@ -61,25 +118,339 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Carregar histórico de transcrições do Supabase
+  // Carregar histórico de transcrições e pastas do Supabase
   useEffect(() => {
-    async function fetchTranscriptions() {
+    async function fetchTranscriptionsAndFolders() {
       try {
-        const response = await fetch('/api/transcriptions');
-        if (response.ok) {
-          const data = await response.json();
+        const [transRes, foldersRes] = await Promise.all([
+          fetch('/api/transcriptions'),
+          fetch('/api/folders')
+        ]);
+        if (transRes.ok) {
+          const data = await transRes.json();
           setTranscriptions(data);
-        } else {
-          console.error('Falha ao carregar o histórico de transcrições.');
+        }
+        if (foldersRes.ok) {
+          const data = await foldersRes.json();
+          setFolders(data);
         }
       } catch (err) {
-        console.error('Erro ao buscar transcrições:', err);
+        console.error('Erro ao buscar dados do Supabase:', err);
       } finally {
         setIsLoadingHistory(false);
       }
     }
-    fetchTranscriptions();
+    fetchTranscriptionsAndFolders();
   }, []);
+
+  // Fechar dropdowns de ação ao clicar fora e cancelar edição de detalhes
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.dropdown-menu-trigger') && !target.closest('.dropdown-menu-content')) {
+        setActiveMenuId(null);
+      }
+      if (isEditingDetails && !target.closest('.details-rename-container')) {
+        setIsEditingDetails(false);
+      }
+    };
+    window.addEventListener('click', handleOutsideClick);
+    return () => window.removeEventListener('click', handleOutsideClick);
+  }, [isEditingDetails]);
+
+  // Resetar estado de edição de detalhes ao mudar de áudio
+  useEffect(() => {
+    setIsEditingDetails(false);
+  }, [selectedId]);
+
+  // Handlers para Pasta
+  const handleCreateFolder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFolderName.trim()) return;
+    try {
+      const response = await fetch('/api/folders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newFolderName.trim() })
+      });
+      if (response.ok) {
+        const folder = await response.json();
+        setFolders(prev => [...prev, folder].sort((a, b) => a.name.localeCompare(b.name)));
+        setNewFolderName('');
+        setIsCreatingFolder(false);
+      }
+    } catch (err) {
+      console.error('Erro ao criar pasta:', err);
+    }
+  };
+
+  const handleRenameFolder = async (id: string, newName: string) => {
+    if (!newName.trim()) return;
+    try {
+      const response = await fetch(`/api/folders/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName.trim() })
+      });
+      if (response.ok) {
+        const folder = await response.json();
+        setFolders(prev => prev.map(f => f.id === id ? folder : f).sort((a, b) => a.name.localeCompare(b.name)));
+        setEditingFolderId(null);
+      }
+    } catch (err) {
+      console.error('Erro ao renomear pasta:', err);
+    }
+  };
+
+  const requestDeleteFolder = (id: string) => {
+    const folder = folders.find(f => f.id === id);
+    setDeleteModal({
+      isOpen: true,
+      type: 'folder',
+      id,
+      title: 'Excluir Pasta',
+      message: `Ao excluir a pasta "${folder?.name || ''}", todas as transcrições contidas nela serão mantidas e movidas para a raiz. Deseja continuar?`
+    });
+  };
+
+  // Handlers para Transcrição
+  const handleRenameTranscription = async (id: string, newTitleBase: string) => {
+    const original = transcriptions.find(t => t.id === id);
+    if (!original) return;
+    
+    const currentName = original.title || original.file_name;
+    const { ext } = getBaseAndExt(currentName);
+    const finalTitle = newTitleBase.trim() ? newTitleBase.trim() + ext : null;
+
+    try {
+      const response = await fetch(`/api/transcriptions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: finalTitle })
+      });
+      if (response.ok) {
+        const updated = await response.json();
+        setTranscriptions(prev => prev.map(t => t.id === id ? updated : t));
+        setEditingId(null);
+      }
+    } catch (err) {
+      console.error('Erro ao renomear transcrição:', err);
+    }
+  };
+
+  const handleTogglePin = async (id: string, currentPin: boolean) => {
+    try {
+      const response = await fetch(`/api/transcriptions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_pinned: !currentPin })
+      });
+      if (response.ok) {
+        const updated = await response.json();
+        setTranscriptions(prev => prev.map(t => t.id === id ? updated : t));
+      }
+    } catch (err) {
+      console.error('Erro ao fixar/desafixar:', err);
+    }
+  };
+
+  const handleMoveToFolder = async (id: string, folderId: string | null) => {
+    try {
+      const response = await fetch(`/api/transcriptions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder_id: folderId })
+      });
+      if (response.ok) {
+        const updated = await response.json();
+        setTranscriptions(prev => prev.map(t => t.id === id ? updated : t));
+      }
+    } catch (err) {
+      console.error('Erro ao mover transcrição:', err);
+    }
+  };
+
+  const requestDeleteTranscription = (id: string) => {
+    const item = transcriptions.find(t => t.id === id);
+    setDeleteModal({
+      isOpen: true,
+      type: 'transcription',
+      id,
+      title: 'Excluir Transcrição',
+      message: `Tem certeza que deseja excluir a transcrição de "${item?.title || item?.file_name || ''}"? Essa ação é permanente e não poderá ser desfeita.`
+    });
+  };
+
+  const executeDelete = async () => {
+    const { type, id } = deleteModal;
+    setDeleteModal(prev => ({ ...prev, isOpen: false }));
+
+    if (type === 'folder') {
+      try {
+        const response = await fetch(`/api/folders/${id}`, {
+          method: 'DELETE'
+        });
+        if (response.ok) {
+          setFolders(prev => prev.filter(f => f.id !== id));
+          setTranscriptions(prev => prev.map(t => t.folder_id === id ? { ...t, folder_id: null } : t));
+          if (selectedFolderId === id) setSelectedFolderId(null);
+        }
+      } catch (err) {
+        console.error('Erro ao deletar pasta:', err);
+      }
+    } else if (type === 'transcription') {
+      try {
+        const response = await fetch(`/api/transcriptions/${id}`, {
+          method: 'DELETE'
+        });
+        if (response.ok) {
+          setTranscriptions(prev => prev.filter(t => t.id !== id));
+          if (selectedId === id) setSelectedId(null);
+        }
+      } catch (err) {
+        console.error('Erro ao deletar transcrição:', err);
+      }
+    }
+  };
+
+  const renderTranscriptionItem = (t: Transcription) => {
+    const isActive = t.id === selectedId;
+    return (
+      <div
+        key={t.id}
+        className={`group relative flex items-center rounded-xl border transition-all duration-200 font-geist ${
+          activeMenuId === t.id ? 'z-30' : 'z-0'
+        } ${
+          isActive
+            ? 'bg-cyan-400/[0.06] border-cyan-400/30 text-white shadow-[inset_0_1px_1px_rgba(34,211,238,0.15)]'
+            : 'bg-white/[0.01] border-white/[0.05] text-slate-300 hover:bg-white/[0.04] hover:border-white/10'
+        }`}
+      >
+        <button
+          onClick={() => setSelectedId(t.id)}
+          className="flex-1 text-left p-3 pr-8 flex items-start gap-2.5 overflow-hidden cursor-pointer"
+        >
+          <FileText className={`h-4 w-4 shrink-0 mt-0.5 ${isActive ? 'text-cyan-400' : 'text-slate-400'}`} />
+          <div className="space-y-1 overflow-hidden flex-1">
+            {editingId === t.id ? (
+              <input
+                type="text"
+                value={editingTitle}
+                onChange={(e) => setEditingTitle(e.target.value)}
+                onBlur={() => handleRenameTranscription(t.id, editingTitle)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleRenameTranscription(t.id, editingTitle);
+                  } else if (e.key === 'Escape') {
+                    setEditingId(null);
+                  }
+                }}
+                className="bg-slate-950 border border-cyan-400/50 rounded px-1.5 py-0.5 text-xs text-white w-full focus:outline-none"
+                onClick={(e) => e.stopPropagation()}
+                autoFocus
+              />
+            ) : (
+              <p className="text-xs font-semibold truncate leading-tight flex items-center gap-1.5 font-geist">
+                {t.is_pinned && <Pin className="h-2.5 w-2.5 text-cyan-400 shrink-0 fill-cyan-400/20" />}
+                <span className="truncate">{t.title || t.file_name}</span>
+              </p>
+            )}
+            <div className="flex items-center gap-2 text-[9px] font-mono-jb text-slate-500">
+              <span className="flex items-center gap-0.5">
+                <Clock className="h-2.5 w-2.5" />
+                {formatDuration(t.audio_duration)}
+              </span>
+              <span>•</span>
+              <span>{formatFileSize(t.file_size)}</span>
+            </div>
+          </div>
+        </button>
+
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 dropdown-menu-trigger">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveMenuId(prev => prev === t.id ? null : t.id);
+            }}
+            className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-white/5 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+          >
+            <MoreVertical className="h-3.5 w-3.5" />
+          </button>
+
+          {activeMenuId === t.id && (
+            <div 
+              className="absolute right-0 mt-1 w-48 rounded-xl bg-[#0f172a] border border-white/10 p-1.5 shadow-2xl z-50 text-left text-xs dropdown-menu-content font-geist"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={() => {
+                  handleTogglePin(t.id, !!t.is_pinned);
+                  setActiveMenuId(null);
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/5 transition cursor-pointer"
+              >
+                {t.is_pinned ? (
+                  <>
+                    <PinOff className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                    <span>Desafixar</span>
+                  </>
+                ) : (
+                  <>
+                    <Pin className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+                    <span>Fixar no topo</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => {
+                  setEditingId(t.id);
+                  setEditingTitle(getBaseAndExt(t.title || t.file_name).base);
+                  setActiveMenuId(null);
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/5 transition cursor-pointer"
+              >
+                <Edit2 className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                <span>Renomear</span>
+              </button>
+
+              {folders.length > 0 && (
+                <div className="h-px bg-white/5 my-1" />
+              )}
+              {folders.map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => {
+                    handleMoveToFolder(t.id, t.folder_id === f.id ? null : f.id);
+                    setActiveMenuId(null);
+                  }}
+                  className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/5 transition cursor-pointer"
+                >
+                  <span className="flex items-center gap-2 truncate">
+                    <Folder className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                    <span className="truncate">{f.name}</span>
+                  </span>
+                  {t.folder_id === f.id && <Check className="h-3 w-3 text-cyan-400 shrink-0" />}
+                </button>
+              ))}
+
+              <div className="h-px bg-white/5 my-1" />
+              <button
+                onClick={() => {
+                  requestDeleteTranscription(t.id);
+                  setActiveMenuId(null);
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10 transition cursor-pointer"
+              >
+                <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                <span>Excluir</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   // Formata o tamanho do arquivo
   const formatFileSize = (bytes: number): string => {
@@ -115,13 +486,82 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
     });
   };
 
-  // Filtra as transcrições da busca
-  const filteredTranscriptions = useMemo(() => {
-    return transcriptions.filter(t => 
-      t.file_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.transcription_text.toLowerCase().includes(searchQuery.toLowerCase())
+  // Transcrições filtradas pelo folder selecionado (ou global se houver busca)
+  const currentFolderTranscriptions = useMemo(() => {
+    if (searchQuery.trim()) {
+      return transcriptions.filter(t => 
+        (t.title || t.file_name).toLowerCase().includes(searchQuery.toLowerCase()) ||
+        t.transcription_text.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    return transcriptions.filter(t => t.folder_id === selectedFolderId);
+  }, [transcriptions, searchQuery, selectedFolderId]);
+
+  // Ordenação das transcrições (Cronológica vs Alfabética)
+  const sortedTranscriptions = useMemo(() => {
+    const items = [...currentFolderTranscriptions];
+    if (sortBy === 'alphabetical') {
+      return items.sort((a, b) => {
+        const nameA = (a.title || a.file_name).toLowerCase();
+        const nameB = (b.title || b.file_name).toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+    } else {
+      return items.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }
+  }, [currentFolderTranscriptions, sortBy]);
+
+  // Itens fixados no contexto atual (apenas se não houver busca global)
+  const pinnedTranscriptions = useMemo(() => {
+    if (searchQuery.trim()) return [];
+    return sortedTranscriptions.filter(t => t.is_pinned);
+  }, [sortedTranscriptions, searchQuery]);
+
+  // Itens não fixados agrupados por data (Hoje, Ontem, Esta semana, Mais antigos) ou simples lista se alfabético
+  const groupedUnpinnedTranscriptions = useMemo(() => {
+    const unpinned = searchQuery.trim() 
+      ? sortedTranscriptions 
+      : sortedTranscriptions.filter(t => !t.is_pinned);
+
+    if (sortBy !== 'date') {
+      return { 'Todos os áudios': unpinned };
+    }
+
+    const groups: { [key: string]: Transcription[] } = {
+      'Hoje': [],
+      'Ontem': [],
+      'Esta semana': [],
+      'Mais antigos': []
+    };
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const oneWeekAgo = new Date(today);
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+    unpinned.forEach(t => {
+      const date = new Date(t.created_at);
+      const itemDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+      if (itemDate.getTime() === today.getTime()) {
+        groups['Hoje'].push(t);
+      } else if (itemDate.getTime() === yesterday.getTime()) {
+        groups['Ontem'].push(t);
+      } else if (date.getTime() >= oneWeekAgo.getTime()) {
+        groups['Esta semana'].push(t);
+      } else {
+        groups['Mais antigos'].push(t);
+      }
+    });
+
+    return Object.fromEntries(
+      Object.entries(groups).filter(([_, items]) => items.length > 0)
     );
-  }, [transcriptions, searchQuery]);
+  }, [sortedTranscriptions, sortBy, searchQuery]);
 
   // Transcrição atualmente selecionada
   const selectedTranscription = useMemo(() => {
@@ -286,7 +726,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
   };
 
   return (
-    <div className="relative flex-1 flex flex-col md:grid md:grid-cols-[280px_1fr] bg-[#080c14] text-slate-100 overflow-hidden font-sans">
+    <div className="relative flex-1 md:h-screen flex flex-col md:grid md:grid-cols-[280px_1fr] bg-[#080c14] text-slate-100 overflow-hidden font-sans">
       
       {/* Background Blobs Aura Estética */}
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none opacity-80">
@@ -302,18 +742,21 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
         
         {/* Header da Sidebar */}
         <div className="h-16 flex items-center justify-between px-5 border-b border-white/[0.08] bg-white/[0.02]">
-          <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setSelectedId(null)}
+            className="flex items-center gap-2.5 cursor-pointer text-left hover:opacity-80 transition"
+          >
             <span className="w-8 h-8 rounded-full bg-gradient-to-b from-white to-slate-200 border border-white/20 shadow-md flex items-center justify-center">
               <AudioLines className="h-4.5 w-4.5 text-slate-950" />
             </span>
             <span className="text-sm font-semibold tracking-[-0.03em] font-jakarta">
               Transcript <span className="text-cyan-400 font-semibold">Hub</span>
             </span>
-          </div>
+          </button>
         </div>
 
-        {/* Busca */}
-        <div className="p-4 border-b border-white/[0.05]">
+        {/* Busca e Controles */}
+        <div className="p-4 border-b border-white/[0.05] space-y-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
             <input
@@ -321,7 +764,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Buscar transcrições..."
-              className="w-full rounded-full bg-slate-950/60 border border-white/10 pl-9 pr-4 py-2 text-[11px] text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400/40 focus:shadow-[0_0_10px_rgba(34,211,238,0.1)] transition font-geist"
+              className="w-full rounded-full bg-slate-950/60 border border-white/10 pl-9 pr-9 py-2 text-[11px] text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400/40 focus:shadow-[0_0_10px_rgba(34,211,238,0.1)] transition font-geist"
             />
             {searchQuery && (
               <button 
@@ -332,54 +775,185 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
               </button>
             )}
           </div>
+          
+          <div className="flex items-center justify-between px-1 text-[10px] font-geist">
+            <button
+              onClick={() => setSortBy(prev => prev === 'date' ? 'alphabetical' : 'date')}
+              className="flex items-center gap-1.5 text-slate-400 hover:text-cyan-400 transition cursor-pointer"
+              title={sortBy === 'date' ? "Alternar para ordem alfabética" : "Alternar para ordem cronológica"}
+            >
+              <ArrowUpDown className="h-3 w-3" />
+              <span>{sortBy === 'date' ? 'Cronológica' : 'Alfabética'}</span>
+            </button>
+
+            {selectedFolderId === null && (
+              <button
+                onClick={() => setIsCreatingFolder(prev => !prev)}
+                className="flex items-center gap-1.5 text-slate-400 hover:text-cyan-400 transition cursor-pointer"
+              >
+                <FolderPlus className="h-3 w-3" />
+                <span>Nova pasta</span>
+              </button>
+            )}
+          </div>
+
+          {isCreatingFolder && (
+            <form onSubmit={handleCreateFolder} className="flex gap-1.5 mt-1.5 animate-fade-in">
+              <input
+                type="text"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                placeholder="Nome da pasta..."
+                className="flex-1 rounded-lg bg-slate-950/80 border border-white/10 px-2 py-1.5 text-[10px] text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400"
+                autoFocus
+              />
+              <button
+                type="submit"
+                className="rounded-lg bg-cyan-500/10 border border-cyan-400/20 px-2 py-1.5 text-[10px] font-semibold text-cyan-400 hover:bg-cyan-500/20 cursor-pointer"
+              >
+                Criar
+              </button>
+              <button
+                type="button"
+                onClick={() => { setIsCreatingFolder(false); setNewFolderName(''); }}
+                className="rounded-lg bg-white/5 border border-white/10 px-2 py-1.5 text-[10px] text-slate-400 hover:bg-white/10 cursor-pointer"
+              >
+                Cancelar
+              </button>
+            </form>
+          )}
         </div>
 
         {/* Lista de Transcrições */}
-        <div className="flex-1 overflow-y-auto custom-scroll p-3 space-y-1.5 max-h-[350px] md:max-h-none">
-          <div className="text-[9px] font-mono-jb text-slate-500 uppercase tracking-widest pl-2.5 mb-2">
-            Histórico de Áudios
-          </div>
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scroll p-3 space-y-4 max-h-[350px] md:max-h-[calc(100vh-15rem)]">
           
-          {isLoadingHistory ? (
-            <div className="flex flex-col items-center justify-center p-6 space-y-2 text-slate-500">
-              <Loader2 className="h-5 w-5 animate-spin text-cyan-400" />
-              <span className="text-[10px] font-geist">Carregando histórico...</span>
+          {/* Seção 1: Navegação de Pasta Ativa */}
+          {selectedFolderId !== null && (
+            <div className="space-y-1.5 pb-2 border-b border-white/[0.05]">
+              <button
+                onClick={() => setSelectedFolderId(null)}
+                className="w-full text-left rounded-xl p-2.5 bg-white/[0.02] border border-white/[0.05] text-slate-400 hover:text-white hover:bg-white/[0.05] transition flex items-center gap-2 text-[11px] font-medium font-geist cursor-pointer"
+              >
+                <ArrowLeft className="h-3.5 w-3.5 text-slate-500" />
+                <span>Voltar ao início</span>
+              </button>
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-cyan-400/[0.02] border border-cyan-400/10 text-cyan-300">
+                <div className="flex items-center gap-2 text-xs font-semibold font-geist truncate flex-1 pr-2">
+                  <FolderOpen className="h-4 w-4 shrink-0 text-cyan-400" />
+                  {editingFolderId === selectedFolderId ? (
+                    <input
+                      type="text"
+                      value={editingFolderName}
+                      onChange={(e) => setEditingFolderName(e.target.value)}
+                      onBlur={() => handleRenameFolder(selectedFolderId, editingFolderName)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleRenameFolder(selectedFolderId, editingFolderName)}
+                      className="bg-transparent text-cyan-300 font-semibold focus:outline-none border-b border-cyan-400/50 w-full"
+                      autoFocus
+                    />
+                  ) : (
+                    <span className="truncate">{folders.find(f => f.id === selectedFolderId)?.name}</span>
+                  )}
+                </div>
+                {editingFolderId !== selectedFolderId && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => {
+                        setEditingFolderId(selectedFolderId);
+                        setEditingFolderName(folders.find(f => f.id === selectedFolderId)?.name || '');
+                      }}
+                      className="p-1 text-slate-500 hover:text-white transition cursor-pointer"
+                      title="Renomear pasta"
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </button>
+                    <button
+                      onClick={() => requestDeleteFolder(selectedFolderId)}
+                      className="p-1 text-slate-500 hover:text-red-400 transition cursor-pointer"
+                      title="Excluir pasta"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
-          ) : filteredTranscriptions.length === 0 ? (
-            <div className="p-4 text-center text-xs text-slate-500 font-geist font-light">
-              Nenhuma transcrição encontrada
-            </div>
-          ) : (
-            filteredTranscriptions.map((t) => {
-              const isActive = t.id === selectedId;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => setSelectedId(t.id)}
-                  className={`w-full text-left rounded-xl p-3 border transition-all duration-200 cursor-pointer font-geist ${
-                    isActive
-                      ? 'bg-cyan-400/[0.06] border-cyan-400/30 text-white shadow-[inset_0_1px_1px_rgba(34,211,238,0.1)]'
-                      : 'bg-white/[0.01] border-white/[0.05] text-slate-300 hover:bg-white/[0.04] hover:border-white/10'
-                  }`}
-                >
-                  <div className="flex items-start gap-2.5">
-                    <FileText className={`h-4 w-4 shrink-0 mt-0.5 ${isActive ? 'text-cyan-400' : 'text-slate-400'}`} />
-                    <div className="space-y-1 overflow-hidden">
-                      <p className="text-xs font-semibold truncate leading-tight">{t.file_name}</p>
-                      <div className="flex items-center gap-2 text-[9px] font-mono-jb text-slate-500">
-                        <span className="flex items-center gap-0.5">
-                          <Clock className="h-2.5 w-2.5" />
-                          {formatDuration(t.audio_duration)}
-                        </span>
-                        <span>•</span>
-                        <span>{formatFileSize(t.file_size)}</span>
-                      </div>
+          )}
+
+          {/* Seção 2: Pastas (Apenas na raiz) */}
+          {selectedFolderId === null && !searchQuery.trim() && folders.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[9px] font-mono-jb text-slate-500 uppercase tracking-widest pl-2.5 mb-1.5">
+                Pastas
+              </div>
+              <div className="grid grid-cols-1 gap-1.5">
+                {folders.map(f => (
+                  <div
+                    key={f.id}
+                    className="group relative flex items-center justify-between rounded-xl border border-white/[0.05] bg-white/[0.01] hover:bg-white/[0.04] p-3 text-left transition text-slate-300 hover:border-white/10 font-geist"
+                  >
+                    <button
+                      onClick={() => setSelectedFolderId(f.id)}
+                      className="flex-1 flex items-center gap-2.5 text-xs font-semibold truncate cursor-pointer text-left font-geist"
+                    >
+                      <Folder className="h-4 w-4 text-cyan-400 shrink-0" />
+                      <span className="truncate">{f.name}</span>
+                    </button>
+                    
+                    <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition shrink-0 ml-1">
+                      <button
+                        onClick={() => requestDeleteFolder(f.id)}
+                        className="p-1 text-slate-500 hover:text-red-400 transition cursor-pointer"
+                        title="Excluir pasta"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
                     </div>
                   </div>
-                </button>
-              );
-            })
+                ))}
+              </div>
+            </div>
           )}
+
+          {/* Seção 3: Áudios Fixados (Pinned) */}
+          {pinnedTranscriptions.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="text-[9px] font-mono-jb text-slate-500 uppercase tracking-widest pl-2.5">
+                Fixados
+              </div>
+              <div className="space-y-1.5">
+                {pinnedTranscriptions.map(t => renderTranscriptionItem(t))}
+              </div>
+            </div>
+          )}
+
+          {/* Seção 4: Lista Principal (Cronológica Agrupada ou Alfabética Direta) */}
+          <div className="space-y-4">
+            {isLoadingHistory ? (
+              <div className="flex flex-col items-center justify-center p-6 space-y-2 text-slate-500">
+                <Loader2 className="h-5 w-5 animate-spin text-cyan-400" />
+                <span className="text-[10px] font-geist">Carregando histórico...</span>
+              </div>
+            ) : sortedTranscriptions.length === 0 && folders.length === 0 ? (
+              <div className="p-4 text-center text-xs text-slate-500 font-geist font-light">
+                Nenhuma transcrição encontrada
+              </div>
+            ) : (
+              Object.entries(groupedUnpinnedTranscriptions).map(([groupName, items]) => {
+                if (items.length === 0) return null;
+                return (
+                  <div key={groupName} className="space-y-1.5">
+                    <div className="text-[9px] font-mono-jb text-slate-500 uppercase tracking-widest pl-2.5">
+                      {groupName}
+                    </div>
+                    <div className="space-y-1.5">
+                      {items.map(t => renderTranscriptionItem(t))}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
         </div>
 
         {/* Rodapé da Sidebar (User Info & Logout) */}
@@ -446,7 +1020,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
         </header>
 
         {/* Conteúdo Principal */}
-        <div className="flex-1 overflow-y-auto custom-scroll p-6 md:p-8 flex flex-col">
+        <div className="flex-1 overflow-hidden p-6 md:p-8 flex flex-col">
           
           {selectedTranscription ? (
             
@@ -467,10 +1041,69 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                           <FileText className="h-5 w-5" />
                         </div>
                         <div className="space-y-1 min-w-0 flex-1">
-                          <h3 className="text-[10px] font-mono-jb text-cyan-300 uppercase tracking-wider">Arquivo de Áudio</h3>
-                          <p className="text-xs font-semibold text-white break-words whitespace-pre-wrap pr-1" title={selectedTranscription.file_name}>
-                            {selectedTranscription.file_name}
-                          </p>
+                          <h3 className="text-[10px] font-mono-jb text-cyan-300 uppercase tracking-wider flex items-center justify-between">
+                            <span>Arquivo de Áudio</span>
+                            {!isEditingDetails && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsEditingDetails(true);
+                                  setEditingTitle(getBaseAndExt(selectedTranscription.title || selectedTranscription.file_name).base);
+                                }}
+                                className="text-slate-500 hover:text-cyan-400 transition cursor-pointer"
+                                title="Renomear transcrição"
+                              >
+                                <Edit2 className="h-3 w-3" />
+                              </button>
+                            )}
+                          </h3>
+                          {isEditingDetails ? (
+                            <div className="flex flex-col gap-2 mt-1.5 details-rename-container">
+                              <input
+                                type="text"
+                                value={editingTitle}
+                                onChange={(e) => setEditingTitle(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    handleRenameTranscription(selectedTranscription.id, editingTitle);
+                                    setIsEditingDetails(false);
+                                  } else if (e.key === 'Escape') {
+                                    setIsEditingDetails(false);
+                                  }
+                                }}
+                                className="w-full bg-slate-950 border border-cyan-400/50 rounded px-2 py-1 text-xs text-white focus:outline-none"
+                                autoFocus
+                              />
+                              <div className="flex gap-1.5 justify-end">
+                                <button
+                                  onClick={async () => {
+                                    await handleRenameTranscription(selectedTranscription.id, editingTitle);
+                                    setIsEditingDetails(false);
+                                  }}
+                                  className="px-3 py-1 bg-cyan-500/10 text-cyan-400 text-[10px] rounded border border-cyan-400/20 hover:bg-cyan-500/20 cursor-pointer font-medium"
+                                >
+                                  Salvar
+                                </button>
+                                <button
+                                  onClick={() => setIsEditingDetails(false)}
+                                  className="px-3 py-1 bg-white/5 text-slate-400 text-[10px] rounded border border-white/10 hover:bg-white/10 cursor-pointer font-medium"
+                                >
+                                  Cancelar
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="min-h-[34px] flex flex-col justify-center">
+                              <p className="text-xs font-semibold text-white break-words whitespace-pre-wrap pr-1" title={selectedTranscription.title || selectedTranscription.file_name}>
+                                {selectedTranscription.title || selectedTranscription.file_name}
+                              </p>
+                              {selectedTranscription.title && selectedTranscription.title !== selectedTranscription.file_name && (
+                                <p className="text-[9px] text-slate-500 truncate mt-0.5">
+                                  Original: {selectedTranscription.file_name}
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -491,15 +1124,35 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                           <p className="text-xs font-semibold text-slate-300">{formatDate(selectedTranscription.created_at)}</p>
                         </div>
                       </div>
+
+                      <div className="h-px bg-white/[0.08]"></div>
+
+                      {/* Seletor de Pasta */}
+                      <div className="space-y-1.5 font-geist">
+                        <p className="text-[10px] font-mono-jb text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+                          <Folder className="h-3 w-3 text-cyan-400" />
+                          <span>Pasta Organizadora</span>
+                        </p>
+                        <select
+                          value={selectedTranscription.folder_id || ''}
+                          onChange={(e) => handleMoveToFolder(selectedTranscription.id, e.target.value || null)}
+                          className="w-full rounded-lg bg-slate-950 border border-white/10 px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-cyan-400 transition cursor-pointer"
+                        >
+                          <option value="">Nenhuma pasta (Raiz)</option>
+                          {folders.map(f => (
+                            <option key={f.id} value={f.id}>{f.name}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
 
                     <div className="h-px bg-white/[0.08] my-4 relative z-10"></div>
 
                     {/* Botões de Ação na Coluna da Esquerda */}
-                    <div className="relative z-10 pt-1 shrink-0 w-full">
+                    <div className="relative z-10 pt-1 shrink-0 w-full flex gap-2">
                       <button
                         onClick={() => copyToClipboard(selectedTranscription.transcription_text)}
-                        className="w-full inline-flex items-center justify-center gap-2 rounded-full px-5 py-3.5 bg-gradient-to-b from-cyan-400 to-cyan-500 border border-cyan-400 text-slate-950 text-xs font-semibold transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] hover:from-cyan-300 hover:to-cyan-400 hover:shadow-[0_8px_20px_rgba(34,211,238,0.25)] shadow-[0_4px_12px_rgba(34,211,238,0.15)] cursor-pointer font-geist"
+                        className="flex-1 inline-flex items-center justify-center gap-2 rounded-full px-5 py-3.5 bg-gradient-to-b from-cyan-400 to-cyan-500 border border-cyan-400 text-slate-950 text-xs font-semibold transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] hover:from-cyan-300 hover:to-cyan-400 hover:shadow-[0_8px_20px_rgba(34,211,238,0.25)] shadow-[0_4px_12px_rgba(34,211,238,0.15)] cursor-pointer font-geist"
                       >
                         {copied ? (
                           <>
@@ -511,6 +1164,21 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                             <Copy className="h-4 w-4" />
                             <span>Copiar Texto</span>
                           </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleTogglePin(selectedTranscription.id, !!selectedTranscription.is_pinned)}
+                        className={`w-12 h-12 rounded-full border flex items-center justify-center transition-all duration-300 cursor-pointer shrink-0 ${
+                          selectedTranscription.is_pinned
+                            ? 'bg-cyan-500/10 border-cyan-400 text-cyan-400 hover:bg-cyan-500/20'
+                            : 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:bg-white/10'
+                        }`}
+                        title={selectedTranscription.is_pinned ? "Desafixar do topo" : "Fixar no topo"}
+                      >
+                        {selectedTranscription.is_pinned ? (
+                          <PinOff className="h-4 w-4" />
+                        ) : (
+                          <Pin className="h-4 w-4" />
                         )}
                       </button>
                     </div>
@@ -759,6 +1427,51 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Modal Customizado de Confirmação de Exclusão */}
+      {deleteModal.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
+          <div className="w-full max-w-md rounded-[2.5rem] border border-white/10 bg-[#090f1a]/95 p-8 shadow-2xl relative overflow-hidden text-center font-geist">
+            {/* Background Blob */}
+            <div className="absolute top-[-20%] left-[-20%] w-60 h-60 rounded-full bg-red-900/10 blur-[4rem] pointer-events-none"></div>
+
+            <div className="relative z-10 space-y-6">
+              {/* Icon */}
+              <div className="inline-flex w-14 h-14 rounded-full bg-red-500/10 border border-red-500/20 items-center justify-center text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.15)]">
+                <Trash2 className="h-6 w-6" />
+              </div>
+
+              {/* Title & Msg */}
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-white tracking-tight">
+                  {deleteModal.title}
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed px-2">
+                  {deleteModal.message}
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                {/* Cancelar (Safe/Prominent) */}
+                <button
+                  onClick={() => setDeleteModal(prev => ({ ...prev, isOpen: false }))}
+                  className="flex-1 inline-flex justify-center items-center rounded-full bg-gradient-to-b from-cyan-400 to-cyan-500 hover:from-cyan-300 hover:to-cyan-400 border border-cyan-400 text-slate-950 px-5 py-3 text-xs font-semibold transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] shadow-[0_4px_12px_rgba(34,211,238,0.25)] hover:shadow-[0_6px_16px_rgba(34,211,238,0.35)] cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                {/* Excluir (Destructive/Outline) */}
+                <button
+                  onClick={executeDelete}
+                  className="flex-1 inline-flex justify-center items-center rounded-full bg-transparent hover:bg-red-500/10 text-red-400 hover:text-red-300 border border-red-500/20 hover:border-red-500/40 px-5 py-3 text-xs font-semibold transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                >
+                  Confirmar Exclusão
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

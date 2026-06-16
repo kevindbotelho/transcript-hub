@@ -92,7 +92,7 @@ export async function POST(request: Request) {
         audio_duration: openAiData.duration ? Math.round(openAiData.duration) : null,
         transcription_text: openAiData.text || '',
       })
-      .select('id, file_name, file_size, audio_duration, transcription_text, created_at')
+      .select('id, file_name, file_size, audio_duration, transcription_text, created_at, title, is_pinned, folder_id')
       .single();
 
     if (dbError) {
