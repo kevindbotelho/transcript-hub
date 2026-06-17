@@ -74,6 +74,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
   };
 
   const [transcriptions, setTranscriptions] = useState<Transcription[]>([]);
+  const [activeTab, setActiveTab] = useState<'transcribe' | 'files' | 'profile'>('transcribe');
   const [folders, setFolders] = useState<Folder[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -255,8 +256,8 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
 
       if (indexAnchor !== -1 && indexClicked !== -1) {
         const start = Math.min(indexAnchor, indexClicked);
-        const end = Math.max(indexAnchor, indexClicked);
-        const sliced = sortedTranscriptions.slice(start, end + 1);
+        const MathEnd = Math.max(indexAnchor, indexClicked);
+        const sliced = sortedTranscriptions.slice(start, MathEnd + 1);
         setSelectedAudioIds(sliced.map(t => t.id));
       }
     } else if (e.ctrlKey || e.metaKey) {
@@ -1056,9 +1057,6 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
       // Grava histórico no estado local
       setTranscriptions(prev => [newTranscription, ...prev]);
 
-      // Abre automaticamente se o usuário não estiver com nenhuma transcrição selecionada
-      setSelectedId(prev => prev === null ? newTranscription.id : prev);
-
     } catch (err: any) {
       console.error('Erro ao processar áudio na fila:', err);
       if (progressInterval) clearInterval(progressInterval);
@@ -1153,14 +1151,15 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
       </div>
 
       {/* ==========================================
-           1. SIDEBAR LATERAL (HISTÓRICO)
+           1. SIDEBAR LATERAL (MENU DE NAVEGAÇÃO)
            ========================================== */}
-      <aside className="relative z-10 flex flex-col border-b md:border-b-0 md:border-r border-white/[0.08] bg-[#090f1a]/45 backdrop-blur-2xl h-full md:h-screen overflow-hidden select-none shrink-0">
+      <aside className="relative z-10 flex flex-col border-b md:border-b-0 md:border-r border-white/[0.08] bg-[#090f1a]/45 backdrop-blur-2xl h-full md:h-screen overflow-hidden select-none shrink-0 md:w-[240px]">
         
         {/* Header da Sidebar */}
         <div className="h-16 flex items-center justify-between px-5 border-b border-white/[0.08] bg-white/[0.02] shrink-0">
           <button
             onClick={() => {
+              setActiveTab('transcribe');
               setSelectedId(null);
               setSelectedFolderId(null);
               setSelectedAudioIds([]);
@@ -1178,366 +1177,56 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
           </button>
         </div>
 
-        {/* Busca e Controles */}
-        <div className="p-4 border-b border-white/[0.05] space-y-3 shrink-0">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar transcrições..."
-              className="w-full rounded-full bg-slate-950/60 border border-white/10 pl-9 pr-9 py-2 text-[11px] text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400/40 focus:shadow-[0_0_10px_rgba(34,211,238,0.1)] transition font-geist"
-            />
-            {searchQuery && (
-              <button 
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </div>
-          
-          <div className="flex items-center justify-between px-1 text-[10px] font-geist">
-            <button
-              onClick={() => setSortBy(prev => prev === 'date' ? 'alphabetical' : 'date')}
-              className="flex items-center gap-1.5 text-slate-400 hover:text-cyan-400 transition cursor-pointer"
-              title={sortBy === 'date' ? "Alternar para ordem alfabética" : "Alternar para ordem cronológica"}
-            >
-              <ArrowUpDown className="h-3 w-3" />
-              <span>{sortBy === 'date' ? 'Cronológica' : 'Alfabética'}</span>
-            </button>
+        {/* Menu de Abas */}
+        <nav className="flex-1 p-4 space-y-1.5 font-geist">
+          <button
+            onClick={() => {
+              setActiveTab('transcribe');
+              setSelectedId(null);
+            }}
+            className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border transition-all duration-200 text-xs font-semibold cursor-pointer ${
+              activeTab === 'transcribe'
+                ? 'bg-cyan-400/[0.06] border-cyan-400/30 text-white shadow-[inset_0_1px_1px_rgba(34,211,238,0.15)] scale-[1.01]'
+                : 'bg-transparent border-transparent text-slate-400 hover:text-white hover:bg-white/[0.04]'
+            }`}
+          >
+            <UploadCloud className={`h-4.5 w-4.5 ${activeTab === 'transcribe' ? 'text-cyan-400' : 'text-slate-400'}`} />
+            <span>Transcrever</span>
+          </button>
 
-            <button
-              onClick={() => setIsCreatingFolder(prev => !prev)}
-              className="flex items-center gap-1.5 text-slate-400 hover:text-cyan-400 transition cursor-pointer"
-            >
-              <FolderPlus className="h-3 w-3" />
-              <span>Nova pasta</span>
-            </button>
-          </div>
+          <button
+            onClick={() => {
+              setActiveTab('files');
+              setSelectedId(null);
+            }}
+            className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border transition-all duration-200 text-xs font-semibold cursor-pointer ${
+              activeTab === 'files'
+                ? 'bg-cyan-400/[0.06] border-cyan-400/30 text-white shadow-[inset_0_1px_1px_rgba(34,211,238,0.15)] scale-[1.01]'
+                : 'bg-transparent border-transparent text-slate-400 hover:text-white hover:bg-white/[0.04]'
+            }`}
+          >
+            <Folder className={`h-4.5 w-4.5 ${activeTab === 'files' ? 'text-cyan-400' : 'text-slate-400'}`} />
+            <span>Meus Áudios</span>
+          </button>
 
-          {isCreatingFolder && (
-            <div className="mt-1.5 p-2 rounded-xl bg-white/[0.02] border border-white/[0.05] animate-fade-in">
-              <form onSubmit={handleCreateFolder} className="flex flex-col gap-2">
-                <input
-                  type="text"
-                  value={newFolderName}
-                  onChange={(e) => setNewFolderName(e.target.value)}
-                  placeholder="Nome da pasta..."
-                  className="bg-slate-950 border border-cyan-400/30 focus:border-cyan-400 rounded-lg px-2.5 py-1.5 text-xs text-white w-full focus:outline-none placeholder-slate-600 transition font-geist"
-                  autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === 'Escape') {
-                      setIsCreatingFolder(false);
-                      setNewFolderName('');
-                    }
-                  }}
-                />
-                <div className="flex items-center justify-end gap-1.5">
-                  <button
-                    type="submit"
-                    className="rounded-lg bg-cyan-500/10 border border-cyan-400/20 px-2.5 py-1 text-[10px] font-semibold text-cyan-400 hover:bg-cyan-500/20 cursor-pointer transition font-geist"
-                  >
-                    Criar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setIsCreatingFolder(false); setNewFolderName(''); }}
-                    className="rounded-lg bg-white/5 border border-white/10 px-2.5 py-1 text-[10px] text-slate-400 hover:bg-white/10 cursor-pointer transition font-geist"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-        </div>
-
-        {/* Barra de Ações em Lote (Batch Actions Bar) */}
-        {selectedAudioIds.length > 0 && (
-          <div className="mx-4 mt-2 mb-1 p-2 rounded-xl bg-cyan-950/30 border border-cyan-400/20 flex items-center justify-between text-xs text-slate-200 animate-fade-in gap-2 shadow-[0_4px_12px_rgba(0,0,0,0.25)] shrink-0">
-            <span className="font-semibold text-[9px] bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded-full shrink-0 font-geist">
-              {selectedAudioIds.length} {selectedAudioIds.length === 1 ? 'sel.' : 'sel.'}
-            </span>
-            
-            <div className="flex items-center gap-1.5 min-w-0 flex-1 justify-end">
-              {/* Seletor de Movimentação em Lote */}
-              <div className="relative max-w-[120px] flex-1 min-w-0">
-                <select
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val) {
-                      handleBatchMove(val);
-                      e.target.value = ""; // Reseta
-                    }
-                  }}
-                  className="w-full bg-slate-950/80 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-slate-300 focus:outline-none focus:border-cyan-400 transition cursor-pointer truncate font-geist"
-                  defaultValue=""
-                >
-                  <option value="" disabled hidden>Mover para...</option>
-                  <option value="raiz">Início (Raiz)</option>
-                  {foldersWithPaths.map(f => (
-                    <option key={f.id} value={f.id}>{f.path}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Botão de Exclusão em Lote */}
-              <button
-                onClick={handleBatchDeleteRequest}
-                className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10 transition cursor-pointer shrink-0"
-                title="Excluir selecionados"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-
-              {/* Limpar Seleção */}
-              <button
-                onClick={() => {
-                  setSelectedAudioIds([]);
-                  setSelectionAnchorId(null);
-                  setSelectedId(null);
-                }}
-                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-white/5 transition cursor-pointer shrink-0"
-                title="Limpar seleção"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Lista de Transcrições */}
-        <div className="flex-1 min-h-0 overflow-y-auto custom-scroll p-3 space-y-4 max-h-[300px] md:max-h-none">
-          
-          {/* Seção 1: Breadcrumbs e Navegação de Pasta Ativa */}
-          {selectedFolderId !== null && (
-            <div className="space-y-1.5 pb-2 border-b border-white/[0.05]">
-              {/* Breadcrumbs */}
-              <div className="flex flex-wrap items-center gap-1 text-[10px] font-medium font-geist text-slate-400 pb-2 px-1">
-                {getBreadcrumbs.map((crumb, idx) => {
-                  const isDragOver = dragOverBreadcrumbId === (crumb.id === null ? 'root' : crumb.id);
-                  return (
-                    <div key={crumb.id || 'root'} className="flex items-center gap-1 animate-fade-in">
-                      {idx > 0 && <ChevronRight className="h-3.5 w-3.5 text-slate-600 shrink-0" />}
-                      <button
-                        onClick={() => {
-                          setSelectedFolderId(crumb.id);
-                          setSelectedId(null);
-                          setSelectedAudioIds([]);
-                          setSelectionAnchorId(null);
-                        }}
-                        onDragOver={(e) => handleCrumbDragOver(e, crumb.id)}
-                        onDragLeave={handleCrumbDragLeave}
-                        onDrop={(e) => handleDropOnFolder(e, crumb.id)}
-                        className={`transition-all duration-200 cursor-pointer text-left truncate max-w-[80px] p-0.5 rounded ${
-                          isDragOver
-                            ? 'text-cyan-400 bg-cyan-400/10 border border-cyan-400/20 shadow-[0_0_8px_rgba(34,211,238,0.15)] px-1.5 scale-105'
-                            : idx === getBreadcrumbs.length - 1
-                              ? 'text-cyan-400 font-semibold hover:text-cyan-300'
-                              : 'hover:text-white'
-                        }`}
-                        title={crumb.name}
-                      >
-                        {crumb.name}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-              
-              <div className="flex items-start justify-between p-2.5 rounded-xl bg-cyan-400/[0.02] border border-cyan-400/10 text-cyan-300">
-                <div className="flex items-start gap-2 text-xs font-semibold font-geist flex-1 pr-2">
-                  <FolderOpen className="h-4 w-4 shrink-0 text-cyan-400 mt-0.5" />
-                  {editingFolderId === selectedFolderId ? (
-                    <input
-                      type="text"
-                      value={editingFolderName}
-                      onChange={(e) => setEditingFolderName(e.target.value)}
-                      onBlur={() => handleRenameFolder(selectedFolderId, editingFolderName)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleRenameFolder(selectedFolderId, editingFolderName)}
-                      className="bg-transparent text-cyan-300 font-semibold focus:outline-none border-b border-cyan-400/50 w-full"
-                      autoFocus
-                    />
-                  ) : (
-                    <span className="line-clamp-2 whitespace-normal break-words leading-tight flex-1">{folders.find(f => f.id === selectedFolderId)?.name}</span>
-                  )}
-                </div>
-                {editingFolderId !== selectedFolderId && (
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      onClick={() => {
-                        setEditingFolderId(selectedFolderId);
-                        setEditingFolderName(folders.find(f => f.id === selectedFolderId)?.name || '');
-                      }}
-                      className="p-1 text-slate-500 hover:text-white transition cursor-pointer"
-                      title="Renomear pasta"
-                    >
-                      <Edit2 className="h-3 w-3" />
-                    </button>
-                    <button
-                      onClick={() => requestDeleteFolder(selectedFolderId)}
-                      className="p-1 text-slate-500 hover:text-red-400 transition cursor-pointer"
-                      title="Excluir pasta"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Seção 2: Pastas e Subpastas */}
-          {!searchQuery.trim() && currentFolders.length > 0 && (
-            <div className="space-y-1">
-              <div className="text-[9px] font-mono-jb text-slate-500 uppercase tracking-widest pl-2.5 mb-1.5">
-                Pastas
-              </div>
-              <div className="grid grid-cols-1 gap-1.5 animate-fade-in">
-                {currentFolders.map(f => {
-                  const isDragOver = dragOverFolderId === f.id;
-                  const isEditing = editingFolderId === f.id;
-                  return (
-                    <div
-                      key={f.id}
-                      draggable={!isEditing}
-                      onDragStart={(e) => handleFolderDragStart(e, f)}
-                      onDragEnd={handleFolderDragEnd}
-                      onDragOver={(e) => handleFolderDragOver(e, f.id)}
-                      onDragLeave={handleFolderDragLeave}
-                      onDrop={(e) => handleDropOnFolder(e, f.id)}
-                      className={`group relative flex items-center justify-between rounded-xl border p-3 text-left transition-all duration-200 text-slate-300 font-geist ${
-                        isDragOver
-                          ? 'bg-cyan-400/[0.08] border-cyan-400/50 shadow-[0_0_15px_rgba(34,211,238,0.15)] text-white scale-[1.02]'
-                          : 'border-white/[0.05] bg-white/[0.01] hover:bg-white/[0.04] hover:border-white/10'
-                      }`}
-                    >
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          value={editingFolderName}
-                          onChange={(e) => setEditingFolderName(e.target.value)}
-                          onBlur={() => handleRenameFolder(f.id, editingFolderName)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              handleRenameFolder(f.id, editingFolderName);
-                            } else if (e.key === 'Escape') {
-                              setEditingFolderId(null);
-                            }
-                          }}
-                          className="bg-slate-950 border border-cyan-400/50 rounded-lg px-2 py-1 text-xs text-white w-full focus:outline-none font-geist"
-                          onClick={(e) => e.stopPropagation()}
-                          autoFocus
-                        />
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => {
-                              setSelectedFolderId(f.id);
-                              setSelectedId(null);
-                              setSelectedAudioIds([]);
-                              setSelectionAnchorId(null);
-                            }}
-                            className="flex-1 flex items-start gap-2.5 text-xs font-semibold cursor-pointer text-left font-geist pr-2"
-                          >
-                            <Folder className="h-4 w-4 text-cyan-400 shrink-0 mt-0.5" />
-                            <span className="line-clamp-2 whitespace-normal break-words leading-tight flex-1">{f.name}</span>
-                          </button>
-                          
-                          <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition shrink-0 ml-1">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEditingFolderId(f.id);
-                                setEditingFolderName(f.name);
-                              }}
-                              className="p-1 text-slate-500 hover:text-white transition cursor-pointer"
-                              title="Renomear pasta"
-                            >
-                              <Edit2 className="h-3 w-3" />
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                requestDeleteFolder(f.id);
-                              }}
-                              className="p-1 text-slate-500 hover:text-red-400 transition cursor-pointer"
-                              title="Excluir pasta"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Seção de Áudios (Fixados e Comuns) */}
-          {(pinnedTranscriptions.length > 0 || sortedTranscriptions.length > 0) && (
-            <div className="space-y-4 animate-fade-in pt-1">
-              {/* Linha Divisória de Detalhe se houver pastas */}
-              {!searchQuery.trim() && currentFolders.length > 0 && (
-                <div className="h-px bg-white/[0.06] my-4" />
-              )}
-
-              {/* Título de Seção Principal "Áudios" */}
-              <div className="text-[9px] font-mono-jb text-slate-500 uppercase tracking-widest pl-2.5">
-                Áudios
-              </div>
-
-              {/* Áudios Fixados */}
-              {pinnedTranscriptions.length > 0 && (
-                <div className="space-y-1.5 pl-1.5 border-l border-white/[0.03]">
-                  <div className="text-[8px] font-mono-jb text-slate-600 uppercase tracking-wider pl-1">
-                    Fixados
-                  </div>
-                  <div className="space-y-1.5">
-                    {pinnedTranscriptions.map(t => renderTranscriptionItem(t))}
-                  </div>
-                </div>
-              )}
-
-              {/* Lista Principal de Áudios */}
-              <div className="space-y-4">
-                {isLoadingHistory ? (
-                  <div className="flex flex-col items-center justify-center p-6 space-y-2 text-slate-500">
-                    <Loader2 className="h-5 w-5 animate-spin text-cyan-400" />
-                    <span className="text-[10px] font-geist">Carregando histórico...</span>
-                  </div>
-                ) : sortedTranscriptions.length === 0 && folders.length === 0 ? (
-                  <div className="p-4 text-center text-xs text-slate-500 font-geist font-light">
-                    Nenhuma transcrição encontrada
-                  </div>
-                ) : (
-                  Object.entries(groupedUnpinnedTranscriptions).map(([groupName, items]) => {
-                    if (items.length === 0) return null;
-                    return (
-                      <div key={groupName} className="space-y-1.5 pl-1.5 border-l border-white/[0.03]">
-                        <div className="text-[8px] font-mono-jb text-slate-600 uppercase tracking-wider pl-1">
-                          {groupName}
-                        </div>
-                        <div className="space-y-1.5">
-                          {items.map(t => renderTranscriptionItem(t))}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          )}
-
-        </div>
+          <button
+            onClick={() => {
+              setActiveTab('profile');
+              setSelectedId(null);
+            }}
+            className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border transition-all duration-200 text-xs font-semibold cursor-pointer ${
+              activeTab === 'profile'
+                ? 'bg-cyan-400/[0.06] border-cyan-400/30 text-white shadow-[inset_0_1px_1px_rgba(34,211,238,0.15)] scale-[1.01]'
+                : 'bg-transparent border-transparent text-slate-400 hover:text-white hover:bg-white/[0.04]'
+            }`}
+          >
+            <User className={`h-4.5 w-4.5 ${activeTab === 'profile' ? 'text-cyan-400' : 'text-slate-400'}`} />
+            <span>Perfil</span>
+          </button>
+        </nav>
 
         {/* Rodapé da Sidebar (User Info & Logout) */}
-        <div className="p-4 border-t border-white/[0.08] bg-white/[0.01] flex items-center justify-between shrink-0">
+        <div className="p-4 border-t border-white/[0.08] bg-white/[0.01] flex flex-col gap-3 shrink-0">
           <div className="flex items-center gap-2.5 overflow-hidden">
             <div className="w-8 h-8 rounded-full bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
               <User className="h-4 w-4" />
@@ -1548,13 +1237,14 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
             </div>
           </div>
           
-          <form action="/auth/signout" method="POST" className="shrink-0">
+          <form action="/auth/signout" method="POST" className="w-full shrink-0">
             <button
               type="submit"
               title="Sair da Conta"
-              className="w-8 h-8 rounded-xl bg-red-950/20 hover:bg-red-950/40 border border-red-500/20 hover:border-red-500/40 text-red-400 flex items-center justify-center transition-all cursor-pointer"
+              className="w-full h-10 rounded-xl bg-red-950/20 hover:bg-red-950/40 border border-red-500/20 hover:border-red-500/40 text-red-400 flex items-center justify-center gap-2 transition-all cursor-pointer font-geist text-xs font-semibold"
             >
               <LogOut className="h-4 w-4" />
+              <span>Sair da Conta</span>
             </button>
           </form>
         </div>
@@ -1571,7 +1261,10 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
           <div className="flex items-center gap-3">
             {selectedTranscription && (
               <button
-                onClick={() => setSelectedId(null)}
+                onClick={() => {
+                  setSelectedId(null);
+                  setActiveTab('files'); // Retorna para Meus Áudios
+                }}
                 className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300 text-xs font-medium transition cursor-pointer font-geist mr-2 group"
               >
                 <ArrowLeft className="h-3.5 w-3.5 text-slate-400 group-hover:text-white transition-colors" />
@@ -1592,6 +1285,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                             setSelectedId(null); // Fecha tela de detalhes
                             setSelectedAudioIds([]);
                             setSelectionAnchorId(null);
+                            setActiveTab('files'); // Direciona para a aba files
                           }}
                           className={`transition cursor-pointer text-left truncate max-w-[300px] ${
                             isLast ? 'text-cyan-400 font-semibold hover:text-cyan-300' : 'hover:text-white'
@@ -1611,13 +1305,13 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
               </div>
             ) : (
               <h1 className="text-sm font-semibold text-white font-jakarta tracking-tight">
-                Nova Transcrição
+                {activeTab === 'transcribe' ? 'Nova Transcrição' : activeTab === 'files' ? 'Meus Áudios' : 'Perfil do Usuário'}
               </h1>
             )}
           </div>
           
           <div className="flex items-center gap-3">
-            {!selectedTranscription && (
+            {!selectedTranscription && activeTab === 'transcribe' && (
               <span className="text-[9px] font-mono-jb text-slate-500 uppercase tracking-widest bg-white/[0.03] border border-white/[0.08] px-2 py-0.5 rounded">
                 OpenAI gpt-4o-mini-transcribe
               </span>
@@ -1817,109 +1511,623 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
               </div>
             </div>
           ) : (
-            
-            /* Caso 3: Área de Upload Principal (Layout Lado a Lado / Fontes Ampliadas) */
-            <div className="flex-1 w-full max-w-5xl mx-auto flex flex-col justify-center py-6 relative z-10">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 lg:items-stretch">
+            <>
+              {activeTab === 'transcribe' && (
                 
-                {/* Coluna da Esquerda: Introdução e Informações */}
-                <div className="lg:col-span-5 space-y-8 text-left">
-                  <div className="space-y-4">
-                    <h2 className="text-4xl lg:text-5xl font-light tracking-[-0.04em] text-white font-jakarta leading-tight">
-                      Transcreva seu <br className="hidden lg:inline" />
-                      <span className="font-semibold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500">Áudio com IA</span>
-                    </h2>
-                    <p className="text-base text-slate-400 font-geist font-light leading-relaxed max-w-md">
-                      Envie notas de voz do iPhone, reuniões longas ou aulas de faculdade e obtenha a transcrição textual instantaneamente com alta precisão e pontuação inteligente.
-                    </p>
-                  </div>
-
-                  {/* Banner Informativo / Recomendações em coluna vertical estilizada */}
-                  <div className="space-y-4 max-w-md">
-                    <div className="rounded-2xl border border-white/[0.06] bg-[#090f1a]/50 p-5 space-y-2 relative overflow-hidden transition hover:border-cyan-400/20 group">
-                      <div className="flex items-center gap-2 text-[10px] font-mono-jb text-cyan-300 uppercase tracking-wider font-semibold">
-                        <HardDrive className="h-4 w-4 text-cyan-400" />
-                        <span>Limite de 25 MB</span>
+                /* Caso 3: Área de Upload Principal (Layout Lado a Lado / Fontes Ampliadas) */
+                <div className="flex-1 w-full max-w-5xl mx-auto flex flex-col justify-center py-6 relative z-10 animate-fade-in">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 lg:items-stretch">
+                    
+                    {/* Coluna da Esquerda: Introdução e Informações */}
+                    <div className="lg:col-span-5 space-y-8 text-left">
+                      <div className="space-y-4">
+                        <h2 className="text-4xl lg:text-5xl font-light tracking-[-0.04em] text-white font-jakarta leading-tight">
+                          Transcreva seu <br className="hidden lg:inline" />
+                          <span className="font-semibold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500">Áudio com IA</span>
+                        </h2>
+                        <p className="text-base text-slate-400 font-geist font-light leading-relaxed max-w-md">
+                          Envie notas de voz do iPhone, reuniões longas ou aulas de faculdade e obtenha a transcrição textual instantaneamente com alta precisão e pontuação inteligente.
+                        </p>
                       </div>
-                      <p className="text-xs text-slate-400 font-geist leading-relaxed">
-                        A API OpenAI possui um limite máximo de <strong>25 MB</strong> por arquivo. Certifique-se de realizar o fatiamento ou compactação prévia de áudios extremamente longos.
-                      </p>
+
+                      {/* Banner Informativo / Recomendações em coluna vertical estilizada */}
+                      <div className="space-y-4 max-w-md">
+                        <div className="rounded-2xl border border-white/[0.06] bg-[#090f1a]/50 p-5 space-y-2 relative overflow-hidden transition hover:border-cyan-400/20 group">
+                          <div className="flex items-center gap-2 text-[10px] font-mono-jb text-cyan-300 uppercase tracking-wider font-semibold">
+                            <HardDrive className="h-4 w-4 text-cyan-400" />
+                            <span>Limite de 25 MB</span>
+                          </div>
+                          <p className="text-xs text-slate-400 font-geist leading-relaxed">
+                            A API OpenAI possui um limite máximo de <strong>25 MB</strong> por arquivo. Certifique-se de realizar o fatiamento ou compactação prévia de áudios extremamente longos.
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl border border-white/[0.06] bg-[#090f1a]/50 p-5 space-y-2 relative overflow-hidden transition hover:border-cyan-400/20 group">
+                          <div className="flex items-center gap-2 text-[10px] font-mono-jb text-cyan-300 uppercase tracking-wider font-semibold">
+                            <PlayCircle className="h-4 w-4 text-cyan-400" />
+                            <span>Formatos Compatíveis</span>
+                          </div>
+                          <p className="text-xs text-slate-400 font-geist leading-relaxed">
+                            Suporte completo para formatos de áudio gravados pelo iPhone (Notas de Voz em `.m4a`) e outros formatos padrão da web: `.mp3`, `.wav` e `.webm`.
+                          </p>
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="rounded-2xl border border-white/[0.06] bg-[#090f1a]/50 p-5 space-y-2 relative overflow-hidden transition hover:border-cyan-400/20 group">
-                      <div className="flex items-center gap-2 text-[10px] font-mono-jb text-cyan-300 uppercase tracking-wider font-semibold">
-                        <PlayCircle className="h-4 w-4 text-cyan-400" />
-                        <span>Formatos Compatíveis</span>
+                    {/* Coluna da Direita: Área de Upload */}
+                    <div className="lg:col-span-7 space-y-4 w-full flex flex-col">
+                      {/* Caixa Drag and Drop de Vidro Expandida */}
+                      <div 
+                        onDragEnter={handleDrag} 
+                        onDragOver={handleDrag} 
+                        onDragLeave={handleDrag} 
+                        onDrop={handleDrop}
+                        onClick={triggerSelectFile}
+                        className={`relative w-full flex-1 h-full min-h-[380px] rounded-[2rem] border border-dashed transition-all duration-300 flex flex-col items-center justify-center p-8 text-center cursor-pointer overflow-hidden group bg-[#090f1a]/45 ${
+                          isDragActive 
+                            ? 'border-cyan-400 bg-cyan-400/[0.03] shadow-[0_0_25px_rgba(34,211,238,0.18)] scale-[1.01]' 
+                            : 'border-white/10 hover:border-cyan-400/40 hover:bg-[#090f1a]/70 hover:shadow-[0_0_20px_rgba(34,211,238,0.06)]'
+                        }`}
+                      >
+                        {/* Dot grid de fundo sutil */}
+                        <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '1.5rem 1.5rem' }}></div>
+                        
+                        {/* Hidden File Input */}
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          onChange={handleFileChange}
+                          accept=".mp3,.m4a,.wav,.webm"
+                          multiple
+                          className="hidden"
+                        />
+
+                        <div className="relative z-10 space-y-5">
+                          <div className="inline-flex w-16 h-16 rounded-full bg-white/[0.02] group-hover:bg-cyan-500/10 border border-white/10 group-hover:border-cyan-400/30 items-center justify-center text-slate-400 group-hover:text-cyan-400 transition-all duration-300 group-hover:scale-105 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                            <UploadCloud className="h-8 w-8 text-slate-400 group-hover:text-cyan-400 transition-all" />
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <p className="text-sm font-semibold text-slate-200 group-hover:text-cyan-300 transition font-geist">
+                              {isDragActive ? 'Solte o arquivo para carregar' : 'Arraste seu arquivo de áudio aqui'}
+                            </p>
+                            <p className="text-xs text-slate-400 font-geist max-w-[240px] mx-auto leading-relaxed">
+                              ou clique para navegar pelos arquivos do seu dispositivo
+                            </p>
+                          </div>
+                          
+                          <div className="flex flex-wrap justify-center gap-2 text-[9px] font-mono-jb text-slate-500 pt-2">
+                            <span className="px-2 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded-full uppercase">MP3</span>
+                            <span className="px-2 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded-full uppercase">M4A (iOS)</span>
+                            <span className="px-2 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded-full uppercase">WAV</span>
+                            <span className="px-2 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded-full uppercase">WEBM</span>
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-xs text-slate-400 font-geist leading-relaxed">
-                        Suporte completo para formatos de áudio gravados pelo iPhone (Notas de Voz em `.m4a`) e outros formatos padrão da web: `.mp3`, `.wav` e `.webm`.
-                      </p>
+
+                      {/* Caixa de Erro */}
+                      {fileError && (
+                        <div className="w-full flex items-center gap-3 rounded-2xl bg-red-950/20 p-4 text-xs text-red-300 border border-red-500/15 font-geist transition-all animate-pulse">
+                          <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
+                          <p>{fileError}</p>
+                        </div>
+                      )}
                     </div>
+
                   </div>
                 </div>
+              )}
 
-                {/* Coluna da Direita: Área de Upload */}
-                <div className="lg:col-span-7 space-y-4 w-full flex flex-col">
-                  {/* Caixa Drag and Drop de Vidro Expandida */}
-                  <div 
-                    onDragEnter={handleDrag} 
-                    onDragOver={handleDrag} 
-                    onDragLeave={handleDrag} 
-                    onDrop={handleDrop}
-                    onClick={triggerSelectFile}
-                    className={`relative w-full flex-1 h-full min-h-[380px] rounded-[2rem] border border-dashed transition-all duration-300 flex flex-col items-center justify-center p-8 text-center cursor-pointer overflow-hidden group bg-[#090f1a]/45 ${
-                      isDragActive 
-                        ? 'border-cyan-400 bg-cyan-400/[0.03] shadow-[0_0_25px_rgba(34,211,238,0.18)] scale-[1.01]' 
-                        : 'border-white/10 hover:border-cyan-400/40 hover:bg-[#090f1a]/70 hover:shadow-[0_0_20px_rgba(34,211,238,0.06)]'
-                    }`}
-                  >
-                    {/* Dot grid de fundo sutil */}
-                    <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '1.5rem 1.5rem' }}></div>
+              {activeTab === 'files' && (
+                
+                /* Caso 4: Gerenciador de Arquivos/Pastas Completo no Centro */
+                <div className="flex-1 w-full max-w-5xl mx-auto flex flex-col justify-start relative z-10 animate-fade-in space-y-6">
+                  
+                  {/* Cabeçalho de Busca e Controles do Gerenciador */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#090f1a]/50 p-4 rounded-2xl border border-white/[0.06] backdrop-blur-md">
                     
-                    {/* Hidden File Input */}
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleFileChange}
-                      accept=".mp3,.m4a,.wav,.webm"
-                      multiple
-                      className="hidden"
-                    />
+                    {/* Input de Busca */}
+                    <div className="relative flex-1 max-w-md">
+                      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Buscar pastas e transcrições..."
+                        className="w-full rounded-full bg-slate-950/60 border border-white/10 pl-10 pr-10 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400/40 focus:shadow-[0_0_10px_rgba(34,211,238,0.1)] transition font-geist"
+                      />
+                      {searchQuery && (
+                        <button 
+                          onClick={() => setSearchQuery('')}
+                          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 cursor-pointer animate-fade-in"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
 
-                    <div className="relative z-10 space-y-5">
-                      <div className="inline-flex w-16 h-16 rounded-full bg-white/[0.02] group-hover:bg-cyan-500/10 border border-white/10 group-hover:border-cyan-400/30 items-center justify-center text-slate-400 group-hover:text-cyan-400 transition-all duration-300 group-hover:scale-105 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                        <UploadCloud className="h-8 w-8 text-slate-400 group-hover:text-cyan-400 transition-all" />
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <p className="text-sm font-semibold text-slate-200 group-hover:text-cyan-300 transition font-geist">
-                          {isDragActive ? 'Solte o arquivo para carregar' : 'Arraste seu arquivo de áudio aqui'}
-                        </p>
-                        <p className="text-xs text-slate-400 font-geist max-w-[240px] mx-auto leading-relaxed">
-                          ou clique para navegar pelos arquivos do seu dispositivo
-                        </p>
-                      </div>
-                      
-                      <div className="flex flex-wrap justify-center gap-2 text-[9px] font-mono-jb text-slate-500 pt-2">
-                        <span className="px-2 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded-full uppercase">MP3</span>
-                        <span className="px-2 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded-full uppercase">M4A (iOS)</span>
-                        <span className="px-2 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded-full uppercase">WAV</span>
-                        <span className="px-2 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded-full uppercase">WEBM</span>
-                      </div>
+                    {/* Botões de Ação de Pastas/Ordenação */}
+                    <div className="flex items-center gap-3 self-end sm:self-auto text-xs font-geist shrink-0">
+                      <button
+                        onClick={() => setSortBy(prev => prev === 'date' ? 'alphabetical' : 'date')}
+                        className="flex items-center gap-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 px-4 py-2.5 text-slate-300 hover:text-white transition cursor-pointer"
+                        title={sortBy === 'date' ? "Alternar para ordem alfabética" : "Alternar para ordem cronológica"}
+                      >
+                        <ArrowUpDown className="h-3.5 w-3.5 text-cyan-400" />
+                        <span>Ordenar: {sortBy === 'date' ? 'Cronológica' : 'Alfabética'}</span>
+                      </button>
+
+                      <button
+                        onClick={() => setIsCreatingFolder(prev => !prev)}
+                        className="flex items-center gap-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/25 px-4 py-2.5 text-cyan-400 hover:text-cyan-300 transition cursor-pointer font-semibold"
+                      >
+                        <FolderPlus className="h-3.5 w-3.5" />
+                        <span>Nova pasta</span>
+                      </button>
                     </div>
                   </div>
 
-                  {/* Caixa de Erro */}
-                  {fileError && (
-                    <div className="w-full flex items-center gap-3 rounded-2xl bg-red-950/20 p-4 text-xs text-red-300 border border-red-500/15 font-geist transition-all animate-pulse">
-                      <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
-                      <p>{fileError}</p>
+                  {/* Criação Dinâmica de Pasta */}
+                  {isCreatingFolder && (
+                    <div className="p-4 rounded-2xl bg-[#090f1a]/50 border border-white/[0.06] backdrop-blur-md animate-fade-in max-w-md">
+                      <form onSubmit={handleCreateFolder} className="flex flex-col gap-3">
+                        <h4 className="text-xs font-semibold text-slate-300 font-geist">Criar Nova Pasta</h4>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={newFolderName}
+                            onChange={(e) => setNewFolderName(e.target.value)}
+                            placeholder="Nome da pasta..."
+                            className="bg-slate-950 border border-cyan-400/30 focus:border-cyan-400 rounded-xl px-3 py-2 text-xs text-white flex-1 focus:outline-none placeholder-slate-600 transition font-geist"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Escape') {
+                                setIsCreatingFolder(false);
+                                setNewFolderName('');
+                              }
+                            }}
+                          />
+                          <button
+                            type="submit"
+                            className="rounded-xl bg-cyan-500/10 border border-cyan-400/20 px-4 py-2 text-xs font-semibold text-cyan-400 hover:bg-cyan-500/20 cursor-pointer transition font-geist"
+                          >
+                            Criar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setIsCreatingFolder(false); setNewFolderName(''); }}
+                            className="rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-xs text-slate-400 hover:bg-white/10 cursor-pointer transition font-geist"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </form>
                     </div>
                   )}
-                </div>
 
-              </div>
-            </div>
+                  {/* Barra de Ações em Lote */}
+                  {selectedAudioIds.length > 0 && (
+                    <div className="p-3.5 rounded-2xl bg-cyan-950/30 border border-cyan-400/20 flex items-center justify-between text-xs text-slate-200 animate-fade-in gap-4 shadow-lg backdrop-blur-md">
+                      <span className="font-semibold text-xs bg-cyan-500/10 text-cyan-400 px-3.5 py-1.5 rounded-full font-geist">
+                        {selectedAudioIds.length} {selectedAudioIds.length === 1 ? 'item selecionado' : 'itens selecionados'}
+                      </span>
+                      
+                      <div className="flex items-center gap-3 min-w-0 flex-1 justify-end">
+                        <select
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val) {
+                              handleBatchMove(val);
+                              e.target.value = "";
+                            }
+                          }}
+                          className="bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-cyan-400 transition cursor-pointer font-geist max-w-[200px]"
+                          defaultValue=""
+                        >
+                          <option value="" disabled hidden>Mover selecionados para...</option>
+                          <option value="raiz">Início (Raiz)</option>
+                          {foldersWithPaths.map(f => (
+                            <option key={f.id} value={f.id}>{f.path}</option>
+                          ))}
+                        </select>
+
+                        <button
+                          onClick={handleBatchDeleteRequest}
+                          className="px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 hover:text-red-300 hover:bg-red-500/20 transition cursor-pointer flex items-center gap-1.5 font-semibold shrink-0"
+                          title="Excluir selecionados"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          <span>Excluir</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setSelectedAudioIds([]);
+                            setSelectionAnchorId(null);
+                            setSelectedId(null);
+                          }}
+                          className="p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-white/5 transition cursor-pointer shrink-0"
+                          title="Limpar seleção"
+                        >
+                          <X className="h-4.5 w-4.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Gerenciador Central de Arquivos (Grid & Lista) */}
+                  <div className="flex-1 bg-[#090f1a]/40 border border-white/[0.06] rounded-[2rem] p-6 backdrop-blur-md flex flex-col min-h-0 overflow-hidden relative">
+                    <div className="absolute inset-0 opacity-[0.01] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '1.5rem 1.5rem' }}></div>
+                    
+                    <div className="flex-1 overflow-y-auto custom-scroll pr-1 space-y-6 relative z-10">
+                      
+                      {/* Breadcrumbs locais */}
+                      {selectedFolderId !== null && (
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs font-medium font-geist text-slate-400 pb-3 border-b border-white/[0.06]">
+                          {getBreadcrumbs.map((crumb, idx) => {
+                            const isDragOver = dragOverBreadcrumbId === (crumb.id === null ? 'root' : crumb.id);
+                            return (
+                              <div key={crumb.id || 'root'} className="flex items-center gap-1.5 animate-fade-in">
+                                {idx > 0 && <ChevronRight className="h-4 w-4 text-slate-600 shrink-0" />}
+                                <button
+                                  onClick={() => {
+                                    setSelectedFolderId(crumb.id);
+                                    setSelectedId(null);
+                                    setSelectedAudioIds([]);
+                                    setSelectionAnchorId(null);
+                                  }}
+                                  onDragOver={(e) => handleCrumbDragOver(e, crumb.id)}
+                                  onDragLeave={handleCrumbDragLeave}
+                                  onDrop={(e) => handleDropOnFolder(e, crumb.id)}
+                                  className={`transition-all duration-200 cursor-pointer text-left truncate max-w-[120px] px-2 py-1 rounded-lg ${
+                                    isDragOver
+                                      ? 'text-cyan-400 bg-cyan-400/10 border border-cyan-400/20 shadow-md scale-105'
+                                      : idx === getBreadcrumbs.length - 1
+                                        ? 'text-cyan-400 font-semibold bg-cyan-400/[0.03] border border-cyan-400/10'
+                                        : 'hover:text-white hover:bg-white/5'
+                                  }`}
+                                  title={crumb.name}
+                                >
+                                  {crumb.name}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Nome e Edição da Pasta Ativa */}
+                      {selectedFolderId !== null && (
+                        <div className="flex items-center justify-between p-3.5 rounded-2xl bg-cyan-400/[0.02] border border-cyan-400/10 text-cyan-300">
+                          <div className="flex items-center gap-3 text-sm font-semibold font-geist flex-1 pr-3">
+                            <FolderOpen className="h-5 w-5 shrink-0 text-cyan-400" />
+                            {editingFolderId === selectedFolderId ? (
+                              <input
+                                type="text"
+                                value={editingFolderName}
+                                onChange={(e) => setEditingFolderName(e.target.value)}
+                                onBlur={() => handleRenameFolder(selectedFolderId, editingFolderName)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleRenameFolder(selectedFolderId, editingFolderName)}
+                                className="bg-transparent text-cyan-300 font-semibold focus:outline-none border-b border-cyan-400/50 w-full"
+                                autoFocus
+                              />
+                            ) : (
+                              <span className="line-clamp-2 whitespace-normal break-words leading-tight flex-1">{folders.find(f => f.id === selectedFolderId)?.name}</span>
+                            )}
+                          </div>
+                          {editingFolderId !== selectedFolderId && (
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                onClick={() => {
+                                  setEditingFolderId(selectedFolderId);
+                                  setEditingFolderName(folders.find(f => f.id === selectedFolderId)?.name || '');
+                                }}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition cursor-pointer"
+                                title="Renomear pasta"
+                              >
+                                <Edit2 className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() => requestDeleteFolder(selectedFolderId)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition cursor-pointer"
+                                title="Excluir pasta"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Seção de Pastas em Grid */}
+                      {!searchQuery.trim() && currentFolders.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="text-[10px] font-mono-jb text-slate-500 uppercase tracking-widest pl-1">
+                            Pastas
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 animate-fade-in">
+                            {currentFolders.map(f => {
+                              const isDragOver = dragOverFolderId === f.id;
+                              const isEditing = editingFolderId === f.id;
+                              return (
+                                <div
+                                  key={f.id}
+                                  draggable={!isEditing}
+                                  onDragStart={(e) => handleFolderDragStart(e, f)}
+                                  onDragEnd={handleFolderDragEnd}
+                                  onDragOver={(e) => handleFolderDragOver(e, f.id)}
+                                  onDragLeave={handleFolderDragLeave}
+                                  onDrop={(e) => handleDropOnFolder(e, f.id)}
+                                  className={`group relative flex items-center justify-between rounded-2xl border p-4 text-left transition-all duration-200 text-slate-300 font-geist ${
+                                    isDragOver
+                                      ? 'bg-cyan-400/[0.08] border-cyan-400/50 shadow-[0_0_15px_rgba(34,211,238,0.15)] text-white scale-[1.02]'
+                                      : 'border-white/[0.05] bg-white/[0.01] hover:bg-white/[0.04] hover:border-white/10'
+                                  }`}
+                                >
+                                  {isEditing ? (
+                                    <input
+                                      type="text"
+                                      value={editingFolderName}
+                                      onChange={(e) => setEditingFolderName(e.target.value)}
+                                      onBlur={() => handleRenameFolder(f.id, editingFolderName)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          handleRenameFolder(f.id, editingFolderName);
+                                        } else if (e.key === 'Escape') {
+                                          setEditingFolderId(null);
+                                        }
+                                      }}
+                                      className="bg-slate-950 border border-cyan-400/50 rounded-lg px-2.5 py-1.5 text-xs text-white w-full focus:outline-none font-geist"
+                                      onClick={(e) => e.stopPropagation()}
+                                      autoFocus
+                                    />
+                                  ) : (
+                                    <>
+                                      <button
+                                        onClick={() => {
+                                          setSelectedFolderId(f.id);
+                                          setSelectedId(null);
+                                          setSelectedAudioIds([]);
+                                          setSelectionAnchorId(null);
+                                        }}
+                                        className="flex-1 flex items-center gap-3 text-xs font-semibold cursor-pointer text-left font-geist pr-2"
+                                      >
+                                        <Folder className="h-5 w-5 text-cyan-400 shrink-0" />
+                                        <span className="line-clamp-2 whitespace-normal break-words leading-tight flex-1">{f.name}</span>
+                                      </button>
+                                      
+                                      <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition shrink-0 ml-1">
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingFolderId(f.id);
+                                            setEditingFolderName(f.name);
+                                          }}
+                                          className="p-1 rounded text-slate-500 hover:text-white hover:bg-white/5 transition cursor-pointer"
+                                          title="Renomear pasta"
+                                        >
+                                          <Edit2 className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            requestDeleteFolder(f.id);
+                                          }}
+                                          className="p-1 rounded text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition cursor-pointer"
+                                          title="Excluir pasta"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Seção de Áudios (Fixados e Comuns) */}
+                      {(pinnedTranscriptions.length > 0 || sortedTranscriptions.length > 0) && (
+                        <div className="space-y-4 animate-fade-in pt-2">
+                          {!searchQuery.trim() && currentFolders.length > 0 && (
+                            <div className="h-px bg-white/[0.06] my-4" />
+                          )}
+
+                          <div className="text-[10px] font-mono-jb text-slate-500 uppercase tracking-widest pl-1">
+                            Áudios
+                          </div>
+
+                          {/* Áudios Fixados */}
+                          {pinnedTranscriptions.length > 0 && (
+                            <div className="space-y-2 pl-2 border-l border-white/[0.03]">
+                              <div className="text-[9px] font-mono-jb text-slate-600 uppercase tracking-wider pl-1">
+                                Fixados
+                              </div>
+                              <div className="grid grid-cols-1 gap-2">
+                                {pinnedTranscriptions.map(t => renderTranscriptionItem(t))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Lista Principal de Áudios */}
+                          <div className="space-y-4">
+                            {isLoadingHistory ? (
+                              <div className="flex flex-col items-center justify-center p-8 space-y-2 text-slate-500">
+                                <Loader2 className="h-6 w-6 animate-spin text-cyan-400" />
+                                <span className="text-xs font-geist">Carregando histórico...</span>
+                              </div>
+                            ) : sortedTranscriptions.length === 0 && folders.length === 0 ? (
+                              <div className="p-8 text-center text-sm text-slate-500 font-geist font-light">
+                                Nenhuma transcrição encontrada nesta pasta
+                              </div>
+                            ) : (
+                              Object.entries(groupedUnpinnedTranscriptions).map(([groupName, items]) => {
+                                if (items.length === 0) return null;
+                                return (
+                                  <div key={groupName} className="space-y-2 pl-2 border-l border-white/[0.03]">
+                                    <div className="text-[9px] font-mono-jb text-slate-600 uppercase tracking-wider pl-1">
+                                      {groupName}
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-2">
+                                      {items.map(t => renderTranscriptionItem(t))}
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                    </div>
+                  </div>
+
+                </div>
+              )}
+
+              {activeTab === 'profile' && (
+                /* Caso 5: Tela de Perfil e Configurações Completa */
+                <div className="flex-1 w-full max-w-2xl mx-auto flex flex-col justify-center py-6 relative z-10 animate-fade-in">
+                  <div className="rounded-[2.5rem] border border-white/[0.08] bg-[#090f1a]/70 p-8 sm:p-10 backdrop-blur-2xl shadow-2xl relative overflow-hidden flex flex-col group transition-all duration-300 hover:border-cyan-400/25">
+                    {/* Grid de bolinhas de fundo sutil */}
+                    <div className="absolute inset-0 opacity-[0.015] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '1.5rem 1.5rem' }}></div>
+                    
+                    {/* Cabeçalho do Perfil (Avatar + Info) */}
+                    <div className="flex flex-col sm:flex-row items-center gap-6 pb-6 border-b border-white/[0.08] relative z-10">
+                      
+                      {/* Avatar com Glow */}
+                      <div className="relative shrink-0">
+                        <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-cyan-500/10 to-blue-500/10 border border-cyan-400/20 flex items-center justify-center text-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.15)] relative transition-all duration-300 hover:border-cyan-400/40">
+                          <User className="h-9 w-9 text-cyan-400" />
+                          
+                          {/* Badge de Status Online Pulsante */}
+                          <span className="absolute bottom-0 right-0 flex h-3.5 w-3.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-slate-900"></span>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Nome e Acesso */}
+                      <div className="space-y-1.5 text-center sm:text-left">
+                        <h2 className="text-xl font-bold text-white tracking-tight font-jakarta">Conta do Usuário</h2>
+                        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 text-xs">
+                          <span className="text-slate-300 font-semibold font-geist">{userEmail}</span>
+                          <span className="h-1.5 w-1.5 rounded-full bg-slate-600"></span>
+                          <span className="px-2 py-0.5 bg-cyan-500/10 border border-cyan-400/20 text-cyan-400 rounded-full text-[10px] font-mono-jb uppercase tracking-wider font-bold">
+                            Administrador
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Corpo de Configurações */}
+                    <div className="py-6 space-y-6 relative z-10 flex-1 font-geist text-left">
+                      
+                      {/* Seção 1: Chave de API OpenAI */}
+                      <div className="space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                            <Sparkles className="h-4 w-4 text-cyan-400" />
+                            <span>Chave de API OpenAI</span>
+                          </label>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-full text-[9px] font-semibold uppercase tracking-wider">
+                            <Check className="h-3 w-3" />
+                            Configuração Global Ativa
+                          </span>
+                        </div>
+
+                        {/* Input Estilizado Desabilitado */}
+                        <div className="relative">
+                          <input
+                            type="text"
+                            disabled
+                            value="sk-proj-••••••••••••••••••••••••••••••••"
+                            className="w-full bg-slate-950/60 border border-white/10 rounded-2xl pl-4 pr-4 py-3 text-xs text-slate-500 font-mono-jb opacity-60 cursor-not-allowed select-none focus:outline-none"
+                          />
+                        </div>
+
+                        {/* Descrição Explicativa */}
+                        <p className="text-[11px] text-slate-400 leading-relaxed font-light">
+                          No momento, o processamento de áudio do <strong>Transcript Hub</strong> está configurado com a chave de API global do servidor (faturamento centralizado). Em futuras updates públicas do sistema, você poderá configurar sua própria chave de API pessoal aqui para uso descentralizado.
+                        </p>
+                      </div>
+
+                      <div className="h-px bg-white/[0.08]"></div>
+
+                      {/* Seção 2: Preferências Gerais */}
+                      <div className="space-y-4">
+                        <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Preferências Gerais</h3>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {/* Preferência 1: Idioma Padrão */}
+                          <div className="space-y-1.5">
+                            <label className="text-[11px] text-slate-400">Idioma de Transcrição Padrão</label>
+                            <select
+                              disabled
+                              className="w-full bg-slate-950/60 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-500 cursor-not-allowed opacity-60"
+                              defaultValue="auto"
+                            >
+                              <option value="auto">Detecção Automática (Recomendado)</option>
+                              <option value="pt">Português (Brasil)</option>
+                              <option value="en">Inglês</option>
+                              <option value="es">Espanhol</option>
+                            </select>
+                          </div>
+
+                          {/* Preferência 2: Aparência */}
+                          <div className="space-y-1.5">
+                            <label className="text-[11px] text-slate-400">Aparência do Sistema</label>
+                            <select
+                              disabled
+                              className="w-full bg-slate-950/60 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-500 cursor-not-allowed opacity-60"
+                              defaultValue="dark"
+                            >
+                              <option value="dark">Tema Escuro Premium (Padrão)</option>
+                              <option value="light">Tema Claro (Em breve)</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+
+                    <div className="h-px bg-white/[0.08] my-2 relative z-10"></div>
+
+                    {/* Rodapé das Configurações (Botão Salvar Mock) */}
+                    <div className="relative z-10 pt-4 shrink-0 w-full flex justify-end">
+                      <button
+                        onClick={(e) => {
+                          const btn = e.currentTarget;
+                          const originalText = btn.innerHTML;
+                          btn.disabled = true;
+                          btn.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-slate-950 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Salvando...`;
+                          
+                          setTimeout(() => {
+                            btn.innerHTML = `<svg class="h-4 w-4 text-emerald-950 inline mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> Salvo com sucesso!`;
+                            btn.classList.remove('from-cyan-400', 'to-cyan-500', 'hover:from-cyan-300', 'hover:to-cyan-400');
+                            btn.classList.add('from-emerald-400', 'to-emerald-500');
+                            
+                            setTimeout(() => {
+                              btn.innerHTML = originalText;
+                              btn.disabled = false;
+                              btn.classList.remove('from-emerald-400', 'to-emerald-500');
+                              btn.classList.add('from-cyan-400', 'to-cyan-500', 'hover:from-cyan-300', 'hover:to-cyan-400');
+                            }, 2000);
+                          }, 1000);
+                        }}
+                        className="inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 bg-gradient-to-b from-cyan-400 to-cyan-500 border border-cyan-400 text-slate-950 text-xs font-semibold transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] hover:from-cyan-300 hover:to-cyan-400 hover:shadow-[0_8px_20px_rgba(34,211,238,0.25)] shadow-[0_4px_12px_rgba(34,211,238,0.15)] cursor-pointer font-geist"
+                      >
+                        Salvar Preferências
+                      </button>
+                    </div>
+
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
         </div>
