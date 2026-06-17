@@ -45,6 +45,14 @@
 - [x] Quebra automática de linha (`break-words`) para nomes de arquivo longos no card de metadados
 - [x] Botão de retorno "Voltar" unificado no cabeçalho do dashboard
 
+### 6. Reestruturação do Layout e Navegação
+- [x] Implementação de Sidebar com menu de abas lateral (Transcrever, Meus Áudios, Perfil)
+- [x] Tela de Perfil com dados da conta e campo de chave OpenAI protegido com status ativo
+- [x] Tela dedicada de transcrições com fila em segundo plano que suporta múltiplos uploads em lote
+- [x] Gerenciador de pastas e arquivos centralizado com Breadcrumbs, busca e Drag & Drop
+- [x] Seleção múltipla de áudios com barra de lote flutuante (mover e excluir em lote)
+- [x] Visualização de foco total em tela cheia com botão voltar preservando a pasta ativa do usuário
+
 ---
 
 ## Backlog (Ideias Futuras)

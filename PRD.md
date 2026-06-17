@@ -33,22 +33,24 @@ O **Transcript Hub** é um webapp de uso pessoal e restrito a poucos usuários, 
 - Botão "Copiar para Área de Transferência" rápido e acessível com feedback visual de sucesso.
 - Interface responsiva e premium com suporte a temas modernos (design responsivo otimizado para iOS Safari / Google Chrome).
 
-### 3.4. Histórico de Transcrições
+### 3.4. Histórico e Gerenciamento de Pastas (Meus Áudios)
 - Banco de dados Supabase armazenando metadados (nome do arquivo original, tamanho do arquivo, data do upload, duração do áudio) e o texto completo da transcrição.
-- Painel/Sidebar lateral contendo o histórico de áudios passados enviados pelo usuário.
-- Campo de busca textual simples para localizar transcrições antigas por título do arquivo ou conteúdo.
-- Carregamento sob demanda do conteúdo de transcrições passadas ao clicar no item do histórico.
+- Painel central amplo na aba "Meus Áudios" contendo o gerenciador de pastas e arquivos organizados de forma hierárquica.
+- Campo de busca textual integrado para filtrar pastas e transcrições antigas por título ou conteúdo.
+- Seleção múltipla para mover arquivos em lote ou excluí-los em massa via barra de lote flutuante.
+- Organização dinâmica por arrastar e soltar (Drag & Drop) de pastas e arquivos, permitindo movê-los para outras subpastas ou subir de nível através de breadcrumbs navegáveis.
+- Carregamento de transcrições sob demanda em tela cheia com foco total e metadados dedicados ao clicar sobre um áudio.
 
 ---
 
 ## 4. Fluxo do Usuário
 1. **Acesso**: O usuário acessa a URL do app e se depara com a tela de login.
 2. **Login**: Insere e-mail/senha cadastrados para acessar o dashboard principal.
-3. **Dashboard / Upload**: Vê a área de upload centralizada e o painel de histórico à esquerda.
-4. **Envio**: Clica na área de upload ou arrasta um arquivo (`.mp3` ou `.m4a`). No iPhone, clica no seletor de arquivos e escolhe o áudio gravado.
-5. **Processamento**: O arquivo é transmitido para a API do Next.js, que encaminha à OpenAI para transcrição. Uma animação de carregamento é exibida.
-6. **Resultado**: O texto transcrito aparece na tela com um botão rápido para copiar. Simultaneamente, o registro é salvo no banco de dados Supabase e o histórico lateral é atualizado.
-7. **Navegação Histórica**: O usuário pode clicar em qualquer transcrição no menu lateral para visualizar o texto gerado há dias/semanas.
+3. **Navegação (Abas)**: Utiliza a Sidebar lateral para alternar rapidamente entre a aba **Transcrever** (para novos uploads), a aba **Meus Áudios** (para organizar arquivos) e a aba **Perfil** (para controle de configurações da conta).
+4. **Envio (Transcrever)**: Clica na área de upload ou arrasta um arquivo (`.mp3` ou `.m4a`). O painel flutuante de fila no rodapé é iniciado, mostrando o status e o progresso em tempo real no background enquanto o usuário pode continuar navegando livremente no sistema.
+5. **Organização (Meus Áudios)**: O usuário navega por pastas, cria novos subdiretórios e arrasta seus arquivos de áudio para dentro de pastas específicas utilizando a interface central ampla e intuitiva.
+6. **Leitura (Foco Total)**: Ao clicar em um áudio no gerenciador, a lista dá lugar à visualização de leitura em tela cheia. O usuário pode copiar o texto da transcrição com um clique, fixar o arquivo no topo ou renomeá-lo.
+7. **Retorno**: Ao clicar em "Voltar", a visualização da transcrição é fechada e o usuário é redirecionado exatamente para a mesma pasta onde estava navegando anteriormente, mantendo o contexto ativo.
 
 ---
 

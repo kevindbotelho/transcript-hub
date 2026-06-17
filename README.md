@@ -22,12 +22,20 @@ A interface do Transcript Hub segue um Living Design System híbrido personaliza
 
 ---
 
-## ⚙️ Funcionalidades Concluídas (MVP)
+## ⚙️ Funcionalidades Concluídas (MVP & Reestruturação)
 - **Autenticação Segura**: Tela de login exclusiva via e-mail e senha integrada ao Supabase Auth.
-- **Upload Inteligente**: Área drag-and-drop inteligente no Desktop e adaptada para dispositivos móveis com limite de 25 MB.
-- **Transcrição em Tempo Real**: Feedback visual e barra de progresso ativa durante o processamento da IA.
-- **Histórico & Busca**: Sidebar persistente com histórico dos arquivos, permitindo a pesquisa instantânea de termos e nomes de arquivos.
-- **Ações Rápidas**: Copiar texto transcrito com um clique e navegação "Voltar" simplificada.
+- **Estrutura de Sidebar Dinâmica**: Menu lateral em abas para organização das fluxos de trabalho do sistema:
+  - **Transcrever**: Área dedicada a novos uploads.
+  - **Meus Áudios**: Painel de gerenciamento de pastas e arquivos.
+  - **Perfil**: Configurações de preferências da conta e chaves da API.
+- **Upload Inteligente (Transcrever)**: Área drag-and-drop inteligente no Desktop e adaptada para dispositivos móveis com limite de 25 MB. Fila de uploads no rodapé processa múltiplos áudios em lote no background sem interromper o usuário.
+- **Gerenciador de Pastas e Áudios (Meus Áudios)**:
+  - Criação de pastas e subpastas de forma hierárquica.
+  - Barra de ferramentas para busca de conteúdos, ordenação cronológica ou alfabética e nova pasta.
+  - Navegação visual usando Breadcrumbs responsivos com suporte a arrastar e soltar (Drag & Drop).
+  - Ações em lote para mover múltiplos arquivos ou realizar exclusão em massa com barra flutuante.
+- **Visualização com Foco Total**: Ao selecionar uma transcrição, ela ocupa a área central de forma ampla, exibindo metadados na esquerda e o texto de IA otimizado para leitura na direita, com botão de retorno unificado que preserva a pasta de navegação ativa.
+- **Ações Rápidas**: Copiar texto transcrito com um clique, fixar áudios no topo e renomeação direta de arquivos e pastas.
 
 ---
 
