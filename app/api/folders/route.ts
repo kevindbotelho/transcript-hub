@@ -18,7 +18,7 @@ export async function GET() {
 
     const { data: folders, error } = await supabase
       .from('folders')
-      .select('id, name, created_at')
+      .select('id, name, parent_id, created_at')
       .eq('user_id', user.id)
       .order('name', { ascending: true });
 
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { name } = body;
+    const { name, parent_id } = body;
 
     if (!name || typeof name !== 'string' || name.trim() === '') {
       return NextResponse.json(
@@ -70,8 +70,9 @@ export async function POST(request: Request) {
       .insert({
         user_id: user.id,
         name: name.trim(),
+        parent_id: parent_id || null,
       })
-      .select('id, name, created_at')
+      .select('id, name, parent_id, created_at')
       .single();
 
     if (error) {

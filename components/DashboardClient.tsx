@@ -48,6 +48,7 @@ interface Transcription {
 interface Folder {
   id: string;
   name: string;
+  parent_id: string | null;
   created_at: string;
 }
 
@@ -83,6 +84,14 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
   const [sortBy, setSortBy] = useState<'date' | 'alphabetical'>('date');
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+
+  // Estados para Drag & Drop e Seleção Múltipla de Áudios
+  const [selectedAudioIds, setSelectedAudioIds] = useState<string[]>([]);
+  const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
+  const [activeDraggedFolderId, setActiveDraggedFolderId] = useState<string | null>(null);
+  const [activeDraggedAudioIds, setActiveDraggedAudioIds] = useState<string[]>([]);
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
+  const [dragOverBreadcrumbId, setDragOverBreadcrumbId] = useState<string | null>(null);
   
   // Estados de Menus e Edições
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -118,30 +127,345 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Carregar histórico de transcrições e pastas do Supabase
-  useEffect(() => {
-    async function fetchTranscriptionsAndFolders() {
-      try {
-        const [transRes, foldersRes] = await Promise.all([
-          fetch('/api/transcriptions'),
-          fetch('/api/folders')
-        ]);
-        if (transRes.ok) {
-          const data = await transRes.json();
-          setTranscriptions(data);
-        }
-        if (foldersRes.ok) {
-          const data = await foldersRes.json();
-          setFolders(data);
-        }
-      } catch (err) {
-        console.error('Erro ao buscar dados do Supabase:', err);
-      } finally {
-        setIsLoadingHistory(false);
+  // Obter caminhos completos de pastas (ex: Pasta A > Subpasta B)
+  const getFolderPath = (folderId: string, allFolders: Folder[]): string => {
+    const path: string[] = [];
+    let current = allFolders.find(f => f.id === folderId);
+    while (current) {
+      path.unshift(current.name);
+      if (current.parent_id) {
+        current = allFolders.find(f => f.id === current!.parent_id);
+      } else {
+        current = undefined;
       }
     }
-    fetchTranscriptionsAndFolders();
+    return path.join(' > ');
+  };
+
+  // Memoizar pastas ordenadas pelo caminho completo para exibição nos seletores
+  const foldersWithPaths = useMemo(() => {
+    return folders.map(f => ({
+      ...f,
+      path: getFolderPath(f.id, folders)
+    })).sort((a, b) => a.path.localeCompare(b.path));
+  }, [folders]);
+
+  // Recursão para buscar IDs de subpastas descendentes
+  const getDescendantFolderIds = (folderId: string, allFolders: Folder[]): string[] => {
+    const ids: string[] = [];
+    const getChildren = (id: string) => {
+      const children = allFolders.filter(f => f.parent_id === id);
+      children.forEach(c => {
+        ids.push(c.id);
+        getChildren(c.id);
+      });
+    };
+    getChildren(folderId);
+    return ids;
+  };
+
+  // Breadcrumbs para navegação hierárquica
+  const getBreadcrumbs = useMemo(() => {
+    if (!selectedFolderId) return [];
+    const crumbs: { id: string | null; name: string }[] = [];
+    let current = folders.find(f => f.id === selectedFolderId);
+    while (current) {
+      crumbs.unshift({ id: current.id, name: current.name });
+      if (current.parent_id) {
+        current = folders.find(f => f.id === current!.parent_id);
+      } else {
+        current = undefined;
+      }
+    }
+    crumbs.unshift({ id: null, name: 'Início' });
+    return crumbs;
+  }, [folders, selectedFolderId]);
+
+
+
+  const fetchTranscriptions = async () => {
+    try {
+      const res = await fetch('/api/transcriptions');
+      if (res.ok) {
+        const data = await res.json();
+        setTranscriptions(data);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar transcrições:', err);
+    }
+  };
+
+  const fetchFolders = async () => {
+    try {
+      const res = await fetch('/api/folders');
+      if (res.ok) {
+        const data = await res.json();
+        setFolders(data);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar pastas:', err);
+    }
+  };
+
+  // Carregar histórico de transcrições e pastas do Supabase
+  useEffect(() => {
+    async function loadData() {
+      setIsLoadingHistory(true);
+      await Promise.all([fetchTranscriptions(), fetchFolders()]);
+      setIsLoadingHistory(false);
+    }
+    loadData();
   }, []);
+
+  // Criar elemento visual temporário de arrasto (estilo macOS Finder)
+  const createDragGhost = (count: number, type: 'audio' | 'folder', label: string) => {
+    const ghost = document.createElement('div');
+    ghost.style.position = 'absolute';
+    ghost.style.top = '-1000px';
+    ghost.style.left = '-1000px';
+    ghost.style.zIndex = '9999';
+    ghost.style.pointerEvents = 'none';
+    ghost.className = "flex items-center gap-2 rounded-xl bg-slate-900/90 border border-cyan-400/30 px-3 py-2 text-xs font-semibold text-white shadow-[0_8px_30px_rgba(0,0,0,0.5)] backdrop-blur-md font-geist select-none";
+
+    const iconSvg = type === 'folder'
+      ? `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-folder shrink-0"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>`
+      : `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-text shrink-0"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>`;
+
+    ghost.innerHTML = `
+      <div class="relative flex items-center justify-center shrink-0">
+        ${iconSvg}
+        ${count > 1 ? `
+          <span class="absolute -top-2.5 -right-2.5 bg-cyan-400 text-slate-950 font-mono-jb text-[9px] font-bold w-4.5 h-4.5 rounded-full flex items-center justify-center shadow-md border border-slate-900">
+            ${count}
+          </span>
+        ` : ''}
+      </div>
+      <span class="truncate max-w-[150px] font-medium leading-none">${label}</span>
+    `;
+
+    document.body.appendChild(ghost);
+    return ghost;
+  };
+
+  // Clique em áudio para gerenciar seleção múltipla
+  const handleAudioClick = (e: React.MouseEvent, clickedAudio: Transcription) => {
+    if (e.shiftKey && selectionAnchorId) {
+      const indexAnchor = sortedTranscriptions.findIndex(t => t.id === selectionAnchorId);
+      const indexClicked = sortedTranscriptions.findIndex(t => t.id === clickedAudio.id);
+
+      if (indexAnchor !== -1 && indexClicked !== -1) {
+        const start = Math.min(indexAnchor, indexClicked);
+        const end = Math.max(indexAnchor, indexClicked);
+        const sliced = sortedTranscriptions.slice(start, end + 1);
+        setSelectedAudioIds(sliced.map(t => t.id));
+      }
+    } else if (e.ctrlKey || e.metaKey) {
+      setSelectedAudioIds(prev => {
+        if (prev.includes(clickedAudio.id)) {
+          return prev.filter(id => id !== clickedAudio.id);
+        } else {
+          return [...prev, clickedAudio.id];
+        }
+      });
+      setSelectionAnchorId(clickedAudio.id);
+    } else {
+      setSelectedAudioIds([clickedAudio.id]);
+      setSelectionAnchorId(clickedAudio.id);
+      setSelectedId(clickedAudio.id);
+    }
+  };
+
+  // Handlers para arrastar Áudios
+  const handleAudioDragStart = (e: React.DragEvent, audio: Transcription) => {
+    let targetIds = selectedAudioIds;
+    if (!selectedAudioIds.includes(audio.id)) {
+      targetIds = [audio.id];
+      setSelectedAudioIds(targetIds);
+      setSelectionAnchorId(audio.id);
+    }
+
+    setActiveDraggedAudioIds(targetIds);
+    setActiveDraggedFolderId(null); // Garante que não mistura
+
+    e.dataTransfer.setData('application/json', JSON.stringify({
+      type: 'audio-batch',
+      audioIds: targetIds
+    }));
+
+    const ghost = createDragGhost(
+      targetIds.length,
+      'audio',
+      targetIds.length === 1 ? (audio.title || audio.file_name) : `${targetIds.length} arquivos`
+    );
+    e.dataTransfer.setDragImage(ghost, 20, 20);
+    setTimeout(() => {
+      if (document.body.contains(ghost)) {
+        document.body.removeChild(ghost);
+      }
+    }, 0);
+  };
+
+  const handleAudioDragEnd = () => {
+    setActiveDraggedAudioIds([]);
+  };
+
+  // Handlers para arrastar Pastas
+  const handleFolderDragStart = (e: React.DragEvent, folder: Folder) => {
+    setActiveDraggedFolderId(folder.id);
+    setActiveDraggedAudioIds([]); // Garante que não mistura
+
+    e.dataTransfer.setData('application/json', JSON.stringify({
+      type: 'folder',
+      folderId: folder.id
+    }));
+
+    const ghost = createDragGhost(1, 'folder', folder.name);
+    e.dataTransfer.setDragImage(ghost, 20, 20);
+    setTimeout(() => {
+      if (document.body.contains(ghost)) {
+        document.body.removeChild(ghost);
+      }
+    }, 0);
+  };
+
+  const handleFolderDragEnd = () => {
+    setActiveDraggedFolderId(null);
+  };
+
+  // Validação de Destino do Drop
+  const isDropTargetValid = (targetFolderId: string | null) => {
+    if (activeDraggedFolderId) {
+      if (activeDraggedFolderId === targetFolderId) return false;
+      const descendants = getDescendantFolderIds(activeDraggedFolderId, folders);
+      if (targetFolderId && descendants.includes(targetFolderId)) return false;
+      
+      const draggedFolder = folders.find(f => f.id === activeDraggedFolderId);
+      if (draggedFolder && draggedFolder.parent_id === targetFolderId) return false;
+    }
+
+    if (activeDraggedAudioIds.length > 0) {
+      const allInTarget = activeDraggedAudioIds.every(id => {
+        const audio = transcriptions.find(t => t.id === id);
+        return audio && audio.folder_id === targetFolderId;
+      });
+      if (allInTarget) return false;
+    }
+
+    return true;
+  };
+
+  // Handlers de hover / drop nas pastas da lista
+  const handleFolderDragOver = (e: React.DragEvent, targetFolderId: string | null) => {
+    if (isDropTargetValid(targetFolderId)) {
+      e.preventDefault();
+      setDragOverFolderId(targetFolderId);
+    }
+  };
+
+  const handleFolderDragLeave = () => {
+    setDragOverFolderId(null);
+  };
+
+  // Handlers de hover / drop nos Breadcrumbs
+  const handleCrumbDragOver = (e: React.DragEvent, targetFolderId: string | null) => {
+    if (isDropTargetValid(targetFolderId)) {
+      e.preventDefault();
+      setDragOverBreadcrumbId(targetFolderId === null ? 'root' : targetFolderId);
+    }
+  };
+
+  const handleCrumbDragLeave = () => {
+    setDragOverBreadcrumbId(null);
+  };
+
+  // Execução do Drop e atualização no Supabase/Estado local
+  const handleDropOnFolder = async (e: React.DragEvent, targetFolderId: string | null) => {
+    e.preventDefault();
+    setDragOverFolderId(null);
+    setDragOverBreadcrumbId(null);
+
+    // Mover pasta
+    if (activeDraggedFolderId) {
+      const folderId = activeDraggedFolderId;
+      // Atualização otimista
+      setFolders(prev => prev.map(f => f.id === folderId ? { ...f, parent_id: targetFolderId } : f));
+      setActiveDraggedFolderId(null);
+
+      try {
+        const response = await fetch(`/api/folders/${folderId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ parent_id: targetFolderId })
+        });
+        if (!response.ok) throw new Error('Erro ao mover pasta');
+      } catch (err) {
+        console.error(err);
+        fetchFolders(); // Restabelece em caso de falha
+      }
+    }
+
+    // Mover áudios
+    if (activeDraggedAudioIds.length > 0) {
+      const audioIds = [...activeDraggedAudioIds];
+      // Atualização otimista
+      setTranscriptions(prev => prev.map(t => audioIds.includes(t.id) ? { ...t, folder_id: targetFolderId } : t));
+      
+      setSelectedAudioIds([]);
+      setSelectionAnchorId(null);
+      setActiveDraggedAudioIds([]);
+
+      try {
+        await Promise.all(audioIds.map(async (id) => {
+          const response = await fetch(`/api/transcriptions/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folder_id: targetFolderId })
+          });
+          if (!response.ok) throw new Error(`Falha ao mover áudio ${id}`);
+        }));
+      } catch (err) {
+        console.error(err);
+        fetchTranscriptions(); // Restabelece em caso de falha
+      }
+    }
+  };
+
+  // Movimentação em lote de áudios selecionados
+  const handleBatchMove = async (targetFolderId: string | null) => {
+    const actualFolderId = targetFolderId === "raiz" ? null : targetFolderId;
+    const audioIds = [...selectedAudioIds];
+    
+    // Atualização otimista
+    setTranscriptions(prev => prev.map(t => audioIds.includes(t.id) ? { ...t, folder_id: actualFolderId } : t));
+    
+    setSelectedAudioIds([]);
+    setSelectionAnchorId(null);
+
+    try {
+      await Promise.all(audioIds.map(async (id) => {
+        const response = await fetch(`/api/transcriptions/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folder_id: actualFolderId })
+        });
+        if (!response.ok) throw new Error(`Falha ao mover áudio ${id}`);
+      }));
+    } catch (err) {
+      console.error("Erro ao mover lote de áudios:", err);
+      fetchTranscriptions(); // restaura em caso de falha
+    }
+  };
+
+  // Solicitação de exclusão em lote de áudios selecionados
+  const handleBatchDeleteRequest = () => {
+    setDeleteModal({
+      isOpen: true,
+      type: 'transcription',
+      id: 'batch', // ID especial para lote
+      title: 'Excluir Áudios em Lote',
+      message: `Tem certeza que deseja excluir os ${selectedAudioIds.length} áudios selecionados? Essa ação é permanente e não poderá ser desfeita.`
+    });
+  };
 
   // Fechar dropdowns de ação ao clicar fora e cancelar edição de detalhes
   useEffect(() => {
@@ -171,7 +495,10 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
       const response = await fetch('/api/folders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newFolderName.trim() })
+        body: JSON.stringify({ 
+          name: newFolderName.trim(),
+          parent_id: selectedFolderId 
+        })
       });
       if (response.ok) {
         const folder = await response.json();
@@ -291,46 +618,82 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
           method: 'DELETE'
         });
         if (response.ok) {
-          setFolders(prev => prev.filter(f => f.id !== id));
-          setTranscriptions(prev => prev.map(t => t.folder_id === id ? { ...t, folder_id: null } : t));
-          if (selectedFolderId === id) setSelectedFolderId(null);
+          const deletedIds = [id, ...getDescendantFolderIds(id, folders)];
+          setFolders(prev => prev.filter(f => !deletedIds.includes(f.id)));
+          setTranscriptions(prev => prev.map(t => t.folder_id && deletedIds.includes(t.folder_id) ? { ...t, folder_id: null } : t));
+          if (selectedFolderId && deletedIds.includes(selectedFolderId)) {
+            // Voltar para a pasta pai (se ela existir e não foi excluída) ou para a raiz
+            const folderToDelete = folders.find(f => f.id === id);
+            const parentId = folderToDelete?.parent_id;
+            setSelectedFolderId(parentId && !deletedIds.includes(parentId) ? parentId : null);
+          }
         }
       } catch (err) {
         console.error('Erro ao deletar pasta:', err);
       }
     } else if (type === 'transcription') {
-      try {
-        const response = await fetch(`/api/transcriptions/${id}`, {
-          method: 'DELETE'
-        });
-        if (response.ok) {
-          setTranscriptions(prev => prev.filter(t => t.id !== id));
-          if (selectedId === id) setSelectedId(null);
+      if (id === 'batch') {
+        const audioIds = [...selectedAudioIds];
+        // Otimista
+        setTranscriptions(prev => prev.filter(t => !audioIds.includes(t.id)));
+        setSelectedAudioIds([]);
+        setSelectionAnchorId(null);
+        setSelectedId(null);
+
+        try {
+          await Promise.all(audioIds.map(async (aid) => {
+            const response = await fetch(`/api/transcriptions/${aid}`, {
+              method: 'DELETE'
+            });
+            if (!response.ok) throw new Error(`Falha ao excluir áudio ${aid}`);
+          }));
+        } catch (err) {
+          console.error("Erro ao excluir lote de áudios:", err);
+          fetchTranscriptions(); // restaura
         }
-      } catch (err) {
-        console.error('Erro ao deletar transcrição:', err);
+      } else {
+        try {
+          const response = await fetch(`/api/transcriptions/${id}`, {
+            method: 'DELETE'
+          });
+          if (response.ok) {
+            setTranscriptions(prev => prev.filter(t => t.id !== id));
+            if (selectedId === id) setSelectedId(null);
+          }
+        } catch (err) {
+          console.error('Erro ao deletar transcrição:', err);
+        }
       }
     }
   };
 
   const renderTranscriptionItem = (t: Transcription) => {
     const isActive = t.id === selectedId;
+    const isMultiSelected = selectedAudioIds.includes(t.id);
+    const isHighlighted = isActive || isMultiSelected;
+
     return (
       <div
         key={t.id}
-        className={`group relative flex items-center rounded-xl border transition-all duration-200 font-geist ${
+        draggable="true"
+        onDragStart={(e) => handleAudioDragStart(e, t)}
+        onDragEnd={handleAudioDragEnd}
+        className={`group relative flex items-center rounded-xl border transition-all duration-200 font-geist select-none ${
           activeMenuId === t.id ? 'z-30' : 'z-0'
         } ${
-          isActive
-            ? 'bg-cyan-400/[0.06] border-cyan-400/30 text-white shadow-[inset_0_1px_1px_rgba(34,211,238,0.15)]'
+          isHighlighted
+            ? 'bg-cyan-400/[0.06] border-cyan-400/30 text-white shadow-[inset_0_1px_1px_rgba(34,211,238,0.15)] scale-[1.01]'
             : 'bg-white/[0.01] border-white/[0.05] text-slate-300 hover:bg-white/[0.04] hover:border-white/10'
         }`}
       >
         <button
-          onClick={() => setSelectedId(t.id)}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleAudioClick(e, t);
+          }}
           className="flex-1 text-left p-3 pr-8 flex items-start gap-2.5 overflow-hidden cursor-pointer"
         >
-          <FileText className={`h-4 w-4 shrink-0 mt-0.5 ${isActive ? 'text-cyan-400' : 'text-slate-400'}`} />
+          <FileText className={`h-4 w-4 shrink-0 mt-0.5 ${isHighlighted ? 'text-cyan-400' : 'text-slate-400'}`} />
           <div className="space-y-1 overflow-hidden flex-1">
             {editingId === t.id ? (
               <input
@@ -350,9 +713,9 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                 autoFocus
               />
             ) : (
-              <p className="text-xs font-semibold truncate leading-tight flex items-center gap-1.5 font-geist">
-                {t.is_pinned && <Pin className="h-2.5 w-2.5 text-cyan-400 shrink-0 fill-cyan-400/20" />}
-                <span className="truncate">{t.title || t.file_name}</span>
+              <p className="text-xs font-semibold leading-tight flex items-start gap-1.5 font-geist whitespace-normal break-words">
+                {t.is_pinned && <Pin className="h-3 w-3 text-cyan-400 shrink-0 fill-cyan-400/20 mt-0.5" />}
+                <span className="line-clamp-2 flex-1">{t.title || t.file_name}</span>
               </p>
             )}
             <div className="flex items-center gap-2 text-[9px] font-mono-jb text-slate-500">
@@ -366,7 +729,21 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
           </div>
         </button>
 
-        <div className="absolute right-2 top-1/2 -translate-y-1/2 dropdown-menu-trigger">
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 dropdown-menu-trigger">
+          {editingId !== t.id && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingId(t.id);
+                setEditingTitle(getBaseAndExt(t.title || t.file_name).base);
+                setActiveMenuId(null);
+              }}
+              className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-white/5 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+              title="Renomear áudio"
+            >
+              <Edit2 className="h-3.5 w-3.5" />
+            </button>
+          )}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -414,10 +791,10 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                 <span>Renomear</span>
               </button>
 
-              {folders.length > 0 && (
+              {foldersWithPaths.length > 0 && (
                 <div className="h-px bg-white/5 my-1" />
               )}
-              {folders.map(f => (
+              {foldersWithPaths.map(f => (
                 <button
                   key={f.id}
                   onClick={() => {
@@ -428,7 +805,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                 >
                   <span className="flex items-center gap-2 truncate">
                     <Folder className="h-3.5 w-3.5 text-slate-500 shrink-0" />
-                    <span className="truncate">{f.name}</span>
+                    <span className="truncate" title={f.path}>{f.path}</span>
                   </span>
                   {t.folder_id === f.id && <Check className="h-3 w-3 text-cyan-400 shrink-0" />}
                 </button>
@@ -485,6 +862,11 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
       minute: '2-digit'
     });
   };
+
+  // Pastas filtradas de acordo com o nível atual
+  const currentFolders = useMemo(() => {
+    return folders.filter(f => f.parent_id === selectedFolderId);
+  }, [folders, selectedFolderId]);
 
   // Transcrições filtradas pelo folder selecionado (ou global se houver busca)
   const currentFolderTranscriptions = useMemo(() => {
@@ -567,6 +949,41 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
   const selectedTranscription = useMemo(() => {
     return transcriptions.find(t => t.id === selectedId) || null;
   }, [transcriptions, selectedId]);
+
+  // Breadcrumbs unificados para o cabeçalho da área central (para pastas ou áudios)
+  const getHeaderBreadcrumbs = useMemo(() => {
+    if (selectedTranscription) {
+      const crumbs: { id: string | null; name: string; type: 'folder' | 'audio' }[] = [];
+      let currentFolderId = selectedTranscription.folder_id;
+      let current = folders.find(f => f.id === currentFolderId);
+      while (current) {
+        crumbs.unshift({ id: current.id, name: current.name, type: 'folder' });
+        if (current.parent_id) {
+          current = folders.find(f => f.id === current!.parent_id);
+        } else {
+          current = undefined;
+        }
+      }
+      crumbs.push({ id: selectedTranscription.id, name: selectedTranscription.title || selectedTranscription.file_name, type: 'audio' });
+      return crumbs;
+    }
+
+    if (selectedFolderId) {
+      const crumbs: { id: string | null; name: string; type: 'folder' }[] = [];
+      let current = folders.find(f => f.id === selectedFolderId);
+      while (current) {
+        crumbs.unshift({ id: current.id, name: current.name, type: 'folder' });
+        if (current.parent_id) {
+          current = folders.find(f => f.id === current!.parent_id);
+        } else {
+          current = undefined;
+        }
+      }
+      return crumbs;
+    }
+
+    return [];
+  }, [folders, selectedFolderId, selectedTranscription]);
 
   // Handler de Drag & Drop
   const handleDrag = (e: React.DragEvent) => {
@@ -738,10 +1155,10 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
       {/* ==========================================
            1. SIDEBAR LATERAL (HISTÓRICO)
            ========================================== */}
-      <aside className="relative z-10 flex flex-col border-b md:border-b-0 md:border-r border-white/[0.08] bg-[#090f1a]/45 backdrop-blur-2xl h-full select-none shrink-0">
+      <aside className="relative z-10 flex flex-col border-b md:border-b-0 md:border-r border-white/[0.08] bg-[#090f1a]/45 backdrop-blur-2xl h-full md:h-screen overflow-hidden select-none shrink-0">
         
         {/* Header da Sidebar */}
-        <div className="h-16 flex items-center justify-between px-5 border-b border-white/[0.08] bg-white/[0.02]">
+        <div className="h-16 flex items-center justify-between px-5 border-b border-white/[0.08] bg-white/[0.02] shrink-0">
           <button
             onClick={() => setSelectedId(null)}
             className="flex items-center gap-2.5 cursor-pointer text-left hover:opacity-80 transition"
@@ -756,7 +1173,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
         </div>
 
         {/* Busca e Controles */}
-        <div className="p-4 border-b border-white/[0.05] space-y-3">
+        <div className="p-4 border-b border-white/[0.05] space-y-3 shrink-0">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
             <input
@@ -786,60 +1203,148 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
               <span>{sortBy === 'date' ? 'Cronológica' : 'Alfabética'}</span>
             </button>
 
-            {selectedFolderId === null && (
-              <button
-                onClick={() => setIsCreatingFolder(prev => !prev)}
-                className="flex items-center gap-1.5 text-slate-400 hover:text-cyan-400 transition cursor-pointer"
-              >
-                <FolderPlus className="h-3 w-3" />
-                <span>Nova pasta</span>
-              </button>
-            )}
+            <button
+              onClick={() => setIsCreatingFolder(prev => !prev)}
+              className="flex items-center gap-1.5 text-slate-400 hover:text-cyan-400 transition cursor-pointer"
+            >
+              <FolderPlus className="h-3 w-3" />
+              <span>Nova pasta</span>
+            </button>
           </div>
 
           {isCreatingFolder && (
-            <form onSubmit={handleCreateFolder} className="flex gap-1.5 mt-1.5 animate-fade-in">
-              <input
-                type="text"
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                placeholder="Nome da pasta..."
-                className="flex-1 rounded-lg bg-slate-950/80 border border-white/10 px-2 py-1.5 text-[10px] text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400"
-                autoFocus
-              />
-              <button
-                type="submit"
-                className="rounded-lg bg-cyan-500/10 border border-cyan-400/20 px-2 py-1.5 text-[10px] font-semibold text-cyan-400 hover:bg-cyan-500/20 cursor-pointer"
-              >
-                Criar
-              </button>
-              <button
-                type="button"
-                onClick={() => { setIsCreatingFolder(false); setNewFolderName(''); }}
-                className="rounded-lg bg-white/5 border border-white/10 px-2 py-1.5 text-[10px] text-slate-400 hover:bg-white/10 cursor-pointer"
-              >
-                Cancelar
-              </button>
-            </form>
+            <div className="mt-1.5 p-2 rounded-xl bg-white/[0.02] border border-white/[0.05] animate-fade-in">
+              <form onSubmit={handleCreateFolder} className="flex flex-col gap-2">
+                <input
+                  type="text"
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  placeholder="Nome da pasta..."
+                  className="bg-slate-950 border border-cyan-400/30 focus:border-cyan-400 rounded-lg px-2.5 py-1.5 text-xs text-white w-full focus:outline-none placeholder-slate-600 transition font-geist"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setIsCreatingFolder(false);
+                      setNewFolderName('');
+                    }
+                  }}
+                />
+                <div className="flex items-center justify-end gap-1.5">
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-cyan-500/10 border border-cyan-400/20 px-2.5 py-1 text-[10px] font-semibold text-cyan-400 hover:bg-cyan-500/20 cursor-pointer transition font-geist"
+                  >
+                    Criar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIsCreatingFolder(false); setNewFolderName(''); }}
+                    className="rounded-lg bg-white/5 border border-white/10 px-2.5 py-1 text-[10px] text-slate-400 hover:bg-white/10 cursor-pointer transition font-geist"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </div>
           )}
         </div>
 
+        {/* Barra de Ações em Lote (Batch Actions Bar) */}
+        {selectedAudioIds.length > 0 && (
+          <div className="mx-4 mt-2 mb-1 p-2 rounded-xl bg-cyan-950/30 border border-cyan-400/20 flex items-center justify-between text-xs text-slate-200 animate-fade-in gap-2 shadow-[0_4px_12px_rgba(0,0,0,0.25)] shrink-0">
+            <span className="font-semibold text-[9px] bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded-full shrink-0 font-geist">
+              {selectedAudioIds.length} {selectedAudioIds.length === 1 ? 'sel.' : 'sel.'}
+            </span>
+            
+            <div className="flex items-center gap-1.5 min-w-0 flex-1 justify-end">
+              {/* Seletor de Movimentação em Lote */}
+              <div className="relative max-w-[120px] flex-1 min-w-0">
+                <select
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val) {
+                      handleBatchMove(val);
+                      e.target.value = ""; // Reseta
+                    }
+                  }}
+                  className="w-full bg-slate-950/80 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-slate-300 focus:outline-none focus:border-cyan-400 transition cursor-pointer truncate font-geist"
+                  defaultValue=""
+                >
+                  <option value="" disabled hidden>Mover para...</option>
+                  <option value="raiz">Início (Raiz)</option>
+                  {foldersWithPaths.map(f => (
+                    <option key={f.id} value={f.id}>{f.path}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Botão de Exclusão em Lote */}
+              <button
+                onClick={handleBatchDeleteRequest}
+                className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10 transition cursor-pointer shrink-0"
+                title="Excluir selecionados"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+
+              {/* Limpar Seleção */}
+              <button
+                onClick={() => {
+                  setSelectedAudioIds([]);
+                  setSelectionAnchorId(null);
+                  setSelectedId(null);
+                }}
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-white/5 transition cursor-pointer shrink-0"
+                title="Limpar seleção"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Lista de Transcrições */}
-        <div className="flex-1 min-h-0 overflow-y-auto custom-scroll p-3 space-y-4 max-h-[350px] md:max-h-[calc(100vh-15rem)]">
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scroll p-3 space-y-4 max-h-[300px] md:max-h-none">
           
-          {/* Seção 1: Navegação de Pasta Ativa */}
+          {/* Seção 1: Breadcrumbs e Navegação de Pasta Ativa */}
           {selectedFolderId !== null && (
             <div className="space-y-1.5 pb-2 border-b border-white/[0.05]">
-              <button
-                onClick={() => setSelectedFolderId(null)}
-                className="w-full text-left rounded-xl p-2.5 bg-white/[0.02] border border-white/[0.05] text-slate-400 hover:text-white hover:bg-white/[0.05] transition flex items-center gap-2 text-[11px] font-medium font-geist cursor-pointer"
-              >
-                <ArrowLeft className="h-3.5 w-3.5 text-slate-500" />
-                <span>Voltar ao início</span>
-              </button>
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-cyan-400/[0.02] border border-cyan-400/10 text-cyan-300">
-                <div className="flex items-center gap-2 text-xs font-semibold font-geist truncate flex-1 pr-2">
-                  <FolderOpen className="h-4 w-4 shrink-0 text-cyan-400" />
+              {/* Breadcrumbs */}
+              <div className="flex flex-wrap items-center gap-1 text-[10px] font-medium font-geist text-slate-400 pb-2 px-1">
+                {getBreadcrumbs.map((crumb, idx) => {
+                  const isDragOver = dragOverBreadcrumbId === (crumb.id === null ? 'root' : crumb.id);
+                  return (
+                    <div key={crumb.id || 'root'} className="flex items-center gap-1 animate-fade-in">
+                      {idx > 0 && <ChevronRight className="h-3.5 w-3.5 text-slate-600 shrink-0" />}
+                      <button
+                        onClick={() => {
+                          setSelectedFolderId(crumb.id);
+                          setSelectedId(null);
+                          setSelectedAudioIds([]);
+                          setSelectionAnchorId(null);
+                        }}
+                        onDragOver={(e) => handleCrumbDragOver(e, crumb.id)}
+                        onDragLeave={handleCrumbDragLeave}
+                        onDrop={(e) => handleDropOnFolder(e, crumb.id)}
+                        className={`transition-all duration-200 cursor-pointer text-left truncate max-w-[80px] p-0.5 rounded ${
+                          isDragOver
+                            ? 'text-cyan-400 bg-cyan-400/10 border border-cyan-400/20 shadow-[0_0_8px_rgba(34,211,238,0.15)] px-1.5 scale-105'
+                            : idx === getBreadcrumbs.length - 1
+                              ? 'text-cyan-400 font-semibold hover:text-cyan-300'
+                              : 'hover:text-white'
+                        }`}
+                        title={crumb.name}
+                      >
+                        {crumb.name}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              <div className="flex items-start justify-between p-2.5 rounded-xl bg-cyan-400/[0.02] border border-cyan-400/10 text-cyan-300">
+                <div className="flex items-start gap-2 text-xs font-semibold font-geist flex-1 pr-2">
+                  <FolderOpen className="h-4 w-4 shrink-0 text-cyan-400 mt-0.5" />
                   {editingFolderId === selectedFolderId ? (
                     <input
                       type="text"
@@ -851,7 +1356,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                       autoFocus
                     />
                   ) : (
-                    <span className="truncate">{folders.find(f => f.id === selectedFolderId)?.name}</span>
+                    <span className="line-clamp-2 whitespace-normal break-words leading-tight flex-1">{folders.find(f => f.id === selectedFolderId)?.name}</span>
                   )}
                 </div>
                 {editingFolderId !== selectedFolderId && (
@@ -879,85 +1384,154 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
             </div>
           )}
 
-          {/* Seção 2: Pastas (Apenas na raiz) */}
-          {selectedFolderId === null && !searchQuery.trim() && folders.length > 0 && (
+          {/* Seção 2: Pastas e Subpastas */}
+          {!searchQuery.trim() && currentFolders.length > 0 && (
             <div className="space-y-1">
               <div className="text-[9px] font-mono-jb text-slate-500 uppercase tracking-widest pl-2.5 mb-1.5">
                 Pastas
               </div>
-              <div className="grid grid-cols-1 gap-1.5">
-                {folders.map(f => (
-                  <div
-                    key={f.id}
-                    className="group relative flex items-center justify-between rounded-xl border border-white/[0.05] bg-white/[0.01] hover:bg-white/[0.04] p-3 text-left transition text-slate-300 hover:border-white/10 font-geist"
-                  >
-                    <button
-                      onClick={() => setSelectedFolderId(f.id)}
-                      className="flex-1 flex items-center gap-2.5 text-xs font-semibold truncate cursor-pointer text-left font-geist"
+              <div className="grid grid-cols-1 gap-1.5 animate-fade-in">
+                {currentFolders.map(f => {
+                  const isDragOver = dragOverFolderId === f.id;
+                  const isEditing = editingFolderId === f.id;
+                  return (
+                    <div
+                      key={f.id}
+                      draggable={!isEditing}
+                      onDragStart={(e) => handleFolderDragStart(e, f)}
+                      onDragEnd={handleFolderDragEnd}
+                      onDragOver={(e) => handleFolderDragOver(e, f.id)}
+                      onDragLeave={handleFolderDragLeave}
+                      onDrop={(e) => handleDropOnFolder(e, f.id)}
+                      className={`group relative flex items-center justify-between rounded-xl border p-3 text-left transition-all duration-200 text-slate-300 font-geist ${
+                        isDragOver
+                          ? 'bg-cyan-400/[0.08] border-cyan-400/50 shadow-[0_0_15px_rgba(34,211,238,0.15)] text-white scale-[1.02]'
+                          : 'border-white/[0.05] bg-white/[0.01] hover:bg-white/[0.04] hover:border-white/10'
+                      }`}
                     >
-                      <Folder className="h-4 w-4 text-cyan-400 shrink-0" />
-                      <span className="truncate">{f.name}</span>
-                    </button>
-                    
-                    <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition shrink-0 ml-1">
-                      <button
-                        onClick={() => requestDeleteFolder(f.id)}
-                        className="p-1 text-slate-500 hover:text-red-400 transition cursor-pointer"
-                        title="Excluir pasta"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
+                      {isEditing ? (
+                        <input
+                          type="text"
+                          value={editingFolderName}
+                          onChange={(e) => setEditingFolderName(e.target.value)}
+                          onBlur={() => handleRenameFolder(f.id, editingFolderName)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleRenameFolder(f.id, editingFolderName);
+                            } else if (e.key === 'Escape') {
+                              setEditingFolderId(null);
+                            }
+                          }}
+                          className="bg-slate-950 border border-cyan-400/50 rounded-lg px-2 py-1 text-xs text-white w-full focus:outline-none font-geist"
+                          onClick={(e) => e.stopPropagation()}
+                          autoFocus
+                        />
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => {
+                              setSelectedFolderId(f.id);
+                              setSelectedId(null);
+                              setSelectedAudioIds([]);
+                              setSelectionAnchorId(null);
+                            }}
+                            className="flex-1 flex items-start gap-2.5 text-xs font-semibold cursor-pointer text-left font-geist pr-2"
+                          >
+                            <Folder className="h-4 w-4 text-cyan-400 shrink-0 mt-0.5" />
+                            <span className="line-clamp-2 whitespace-normal break-words leading-tight flex-1">{f.name}</span>
+                          </button>
+                          
+                          <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition shrink-0 ml-1">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingFolderId(f.id);
+                                setEditingFolderName(f.name);
+                              }}
+                              className="p-1 text-slate-500 hover:text-white transition cursor-pointer"
+                              title="Renomear pasta"
+                            >
+                              <Edit2 className="h-3 w-3" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                requestDeleteFolder(f.id);
+                              }}
+                              className="p-1 text-slate-500 hover:text-red-400 transition cursor-pointer"
+                              title="Excluir pasta"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {/* Seção 3: Áudios Fixados (Pinned) */}
-          {pinnedTranscriptions.length > 0 && (
-            <div className="space-y-1.5">
+          {/* Seção de Áudios (Fixados e Comuns) */}
+          {(pinnedTranscriptions.length > 0 || sortedTranscriptions.length > 0) && (
+            <div className="space-y-4 animate-fade-in pt-1">
+              {/* Linha Divisória de Detalhe se houver pastas */}
+              {!searchQuery.trim() && currentFolders.length > 0 && (
+                <div className="h-px bg-white/[0.06] my-4" />
+              )}
+
+              {/* Título de Seção Principal "Áudios" */}
               <div className="text-[9px] font-mono-jb text-slate-500 uppercase tracking-widest pl-2.5">
-                Fixados
+                Áudios
               </div>
-              <div className="space-y-1.5">
-                {pinnedTranscriptions.map(t => renderTranscriptionItem(t))}
+
+              {/* Áudios Fixados */}
+              {pinnedTranscriptions.length > 0 && (
+                <div className="space-y-1.5 pl-1.5 border-l border-white/[0.03]">
+                  <div className="text-[8px] font-mono-jb text-slate-600 uppercase tracking-wider pl-1">
+                    Fixados
+                  </div>
+                  <div className="space-y-1.5">
+                    {pinnedTranscriptions.map(t => renderTranscriptionItem(t))}
+                  </div>
+                </div>
+              )}
+
+              {/* Lista Principal de Áudios */}
+              <div className="space-y-4">
+                {isLoadingHistory ? (
+                  <div className="flex flex-col items-center justify-center p-6 space-y-2 text-slate-500">
+                    <Loader2 className="h-5 w-5 animate-spin text-cyan-400" />
+                    <span className="text-[10px] font-geist">Carregando histórico...</span>
+                  </div>
+                ) : sortedTranscriptions.length === 0 && folders.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-slate-500 font-geist font-light">
+                    Nenhuma transcrição encontrada
+                  </div>
+                ) : (
+                  Object.entries(groupedUnpinnedTranscriptions).map(([groupName, items]) => {
+                    if (items.length === 0) return null;
+                    return (
+                      <div key={groupName} className="space-y-1.5 pl-1.5 border-l border-white/[0.03]">
+                        <div className="text-[8px] font-mono-jb text-slate-600 uppercase tracking-wider pl-1">
+                          {groupName}
+                        </div>
+                        <div className="space-y-1.5">
+                          {items.map(t => renderTranscriptionItem(t))}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           )}
-
-          {/* Seção 4: Lista Principal (Cronológica Agrupada ou Alfabética Direta) */}
-          <div className="space-y-4">
-            {isLoadingHistory ? (
-              <div className="flex flex-col items-center justify-center p-6 space-y-2 text-slate-500">
-                <Loader2 className="h-5 w-5 animate-spin text-cyan-400" />
-                <span className="text-[10px] font-geist">Carregando histórico...</span>
-              </div>
-            ) : sortedTranscriptions.length === 0 && folders.length === 0 ? (
-              <div className="p-4 text-center text-xs text-slate-500 font-geist font-light">
-                Nenhuma transcrição encontrada
-              </div>
-            ) : (
-              Object.entries(groupedUnpinnedTranscriptions).map(([groupName, items]) => {
-                if (items.length === 0) return null;
-                return (
-                  <div key={groupName} className="space-y-1.5">
-                    <div className="text-[9px] font-mono-jb text-slate-500 uppercase tracking-widest pl-2.5">
-                      {groupName}
-                    </div>
-                    <div className="space-y-1.5">
-                      {items.map(t => renderTranscriptionItem(t))}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
 
         </div>
 
         {/* Rodapé da Sidebar (User Info & Logout) */}
-        <div className="p-4 border-t border-white/[0.08] bg-white/[0.01] flex items-center justify-between">
+        <div className="p-4 border-t border-white/[0.08] bg-white/[0.01] flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5 overflow-hidden">
             <div className="w-8 h-8 rounded-full bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
               <User className="h-4 w-4" />
@@ -998,16 +1572,42 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                 <span>Voltar</span>
               </button>
             )}
-            <div className="flex items-center gap-2">
+            {getHeaderBreadcrumbs.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold font-geist text-slate-400 animate-fade-in">
+                {getHeaderBreadcrumbs.map((crumb, idx) => {
+                  const isLast = idx === getHeaderBreadcrumbs.length - 1;
+                  return (
+                    <div key={crumb.id || `crumb-${idx}`} className="flex items-center gap-1.5 animate-fade-in">
+                      {idx > 0 && <ChevronRight className="h-3 w-3 text-slate-600 shrink-0" />}
+                      {crumb.type === 'folder' ? (
+                        <button
+                          onClick={() => {
+                            setSelectedFolderId(crumb.id);
+                            setSelectedId(null); // Fecha tela de detalhes
+                            setSelectedAudioIds([]);
+                            setSelectionAnchorId(null);
+                          }}
+                          className={`transition cursor-pointer text-left truncate max-w-[300px] ${
+                            isLast ? 'text-cyan-400 font-semibold hover:text-cyan-300' : 'hover:text-white'
+                          }`}
+                          title={crumb.name}
+                        >
+                          {crumb.name}
+                        </button>
+                      ) : (
+                        <span className="text-cyan-400 font-semibold truncate max-w-[300px] leading-tight" title={crumb.name}>
+                          {crumb.name}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
               <h1 className="text-sm font-semibold text-white font-jakarta tracking-tight">
-                {selectedTranscription ? 'Detalhes da Transcrição' : 'Nova Transcrição'}
+                Nova Transcrição
               </h1>
-              {selectedTranscription && (
-                <span className="rounded-full bg-cyan-400/[0.12] border border-cyan-400/20 px-2 py-0.5 text-[9px] font-medium text-cyan-300">
-                  Histórico
-                </span>
-              )}
-            </div>
+            )}
           </div>
           
           <div className="flex items-center gap-3">
@@ -1139,8 +1739,8 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                           className="w-full rounded-lg bg-slate-950 border border-white/10 px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-cyan-400 transition cursor-pointer"
                         >
                           <option value="">Nenhuma pasta (Raiz)</option>
-                          {folders.map(f => (
-                            <option key={f.id} value={f.id}>{f.name}</option>
+                          {foldersWithPaths.map(f => (
+                            <option key={f.id} value={f.id}>{f.path}</option>
                           ))}
                         </select>
                       </div>

@@ -21,21 +21,28 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { name } = body;
+    const { name, parent_id } = body;
 
-    if (!name || typeof name !== 'string' || name.trim() === '') {
-      return NextResponse.json(
-        { error: 'O nome da pasta é obrigatório.' },
-        { status: 400 }
-      );
+    const updateData: any = {};
+    if (name !== undefined) {
+      if (typeof name !== 'string' || name.trim() === '') {
+        return NextResponse.json(
+          { error: 'O nome da pasta é obrigatório.' },
+          { status: 400 }
+        );
+      }
+      updateData.name = name.trim();
+    }
+    if (parent_id !== undefined) {
+      updateData.parent_id = parent_id || null;
     }
 
     const { data: folder, error } = await supabase
       .from('folders')
-      .update({ name: name.trim() })
+      .update(updateData)
       .eq('id', id)
       .eq('user_id', user.id)
-      .select('id, name, created_at')
+      .select('id, name, parent_id, created_at')
       .single();
 
     if (error) {
