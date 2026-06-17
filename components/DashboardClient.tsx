@@ -1160,7 +1160,13 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
         {/* Header da Sidebar */}
         <div className="h-16 flex items-center justify-between px-5 border-b border-white/[0.08] bg-white/[0.02] shrink-0">
           <button
-            onClick={() => setSelectedId(null)}
+            onClick={() => {
+              setSelectedId(null);
+              setSelectedFolderId(null);
+              setSelectedAudioIds([]);
+              setSelectionAnchorId(null);
+              setSearchQuery('');
+            }}
             className="flex items-center gap-2.5 cursor-pointer text-left hover:opacity-80 transition"
           >
             <span className="w-8 h-8 rounded-full bg-gradient-to-b from-white to-slate-200 border border-white/20 shadow-md flex items-center justify-center">
