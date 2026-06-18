@@ -90,6 +90,9 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
   const [selectedAudioIds, setSelectedAudioIds] = useState<string[]>([]);
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
   const [activeDraggedFolderId, setActiveDraggedFolderId] = useState<string | null>(null);
+  const [activeDraggedFolderIds, setActiveDraggedFolderIds] = useState<string[]>([]);
+  const [selectedFolderIds, setSelectedFolderIds] = useState<string[]>([]);
+  const [selectionAnchorFolderId, setSelectionAnchorFolderId] = useState<string | null>(null);
   const [activeDraggedAudioIds, setActiveDraggedAudioIds] = useState<string[]>([]);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const [dragOverBreadcrumbId, setDragOverBreadcrumbId] = useState<string | null>(null);
@@ -124,6 +127,10 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
   // Estados da Fila de Processamento
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [isQueueOpen, setIsQueueOpen] = useState(true);
+  
+  // Estados para Modal de Mover Hierárquico
+  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
+  const [moveTargetFolderId, setMoveTargetFolderId] = useState<string | null>(null);
   
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -167,7 +174,6 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
 
   // Breadcrumbs para navegação hierárquica
   const getBreadcrumbs = useMemo(() => {
-    if (!selectedFolderId) return [];
     const crumbs: { id: string | null; name: string }[] = [];
     let current = folders.find(f => f.id === selectedFolderId);
     while (current) {
@@ -181,6 +187,64 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
     crumbs.unshift({ id: null, name: 'Início' });
     return crumbs;
   }, [folders, selectedFolderId]);
+
+  // Gera recursivamente a árvore hierárquica de pastas com profundidade (depth) e ordenação alfabética
+  const buildFolderTree = (
+    allFolders: Folder[],
+    parentId: string | null = null,
+    depth = 0
+  ): { id: string; name: string; depth: number }[] => {
+    const result: { id: string; name: string; depth: number }[] = [];
+    const levelFolders = allFolders
+      .filter(f => f.parent_id === parentId)
+      .sort((a, b) => a.name.localeCompare(b.name));
+      
+    levelFolders.forEach(folder => {
+      result.push({ id: folder.id, name: folder.name, depth });
+      const children = buildFolderTree(allFolders, folder.id, depth + 1);
+      result.push(...children);
+    });
+    return result;
+  };
+
+  // Memoizar a árvore para evitar recálculos desnecessários
+  const folderTree = useMemo(() => {
+    return buildFolderTree(folders, null, 0);
+  }, [folders]);
+
+  // Validação de destino válida para movimentação de pastas e áudios via Modal
+  const isMoveTargetValid = (targetFolderId: string | null) => {
+    // Se estiver movendo pastas
+    if (selectedFolderIds.length > 0) {
+      // Não pode mover para si mesma
+      if (targetFolderId && selectedFolderIds.includes(targetFolderId)) return false;
+      
+      // Não pode mover para subpastas descendentes de si mesma
+      for (const id of selectedFolderIds) {
+        const descendants = getDescendantFolderIds(id, folders);
+        if (targetFolderId && descendants.includes(targetFolderId)) return false;
+      }
+      
+      // Não pode mover para a mesma pasta pai onde todas as pastas já estão
+      const allAlreadyInTarget = selectedFolderIds.every(id => {
+        const folder = folders.find(f => f.id === id);
+        return folder && folder.parent_id === targetFolderId;
+      });
+      if (allAlreadyInTarget) return false;
+    }
+    
+    // Se estiver movendo áudios
+    if (selectedAudioIds.length > 0) {
+      // Não pode mover para a mesma pasta onde todos os áudios selecionados já estão
+      const allInTarget = selectedAudioIds.every(id => {
+        const audio = transcriptions.find(t => t.id === id);
+        return audio && audio.folder_id === targetFolderId;
+      });
+      if (allInTarget) return false;
+    }
+    
+    return true;
+  };
 
 
 
@@ -218,7 +282,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
     loadData();
   }, []);
 
-  // Criar elemento visual temporário de arrasto (estilo macOS Finder)
+  // Criar elemento visual temporário de arrasto (estilo macOS Finder - ampliado)
   const createDragGhost = (count: number, type: 'audio' | 'folder', label: string) => {
     const ghost = document.createElement('div');
     ghost.style.position = 'absolute';
@@ -226,22 +290,22 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
     ghost.style.left = '-1000px';
     ghost.style.zIndex = '9999';
     ghost.style.pointerEvents = 'none';
-    ghost.className = "flex items-center gap-2 rounded-xl bg-slate-900/90 border border-cyan-400/30 px-3 py-2 text-xs font-semibold text-white shadow-[0_8px_30px_rgba(0,0,0,0.5)] backdrop-blur-md font-geist select-none";
+    ghost.className = "flex items-center gap-3.5 rounded-2xl bg-slate-950/95 border-2 border-cyan-400/60 px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_40px_rgba(0,0,0,0.65)] backdrop-blur-md font-geist select-none scale-105";
 
     const iconSvg = type === 'folder'
-      ? `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-folder shrink-0"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>`
-      : `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-text shrink-0"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>`;
+      ? `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-folder shrink-0"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>`
+      : `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-text shrink-0"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>`;
 
     ghost.innerHTML = `
-      <div class="relative flex items-center justify-center shrink-0">
+      <div class="relative flex items-center justify-center shrink-0 mr-1.5">
         ${iconSvg}
         ${count > 1 ? `
-          <span class="absolute -top-2.5 -right-2.5 bg-cyan-400 text-slate-950 font-mono-jb text-[9px] font-bold w-4.5 h-4.5 rounded-full flex items-center justify-center shadow-md border border-slate-900">
+          <span class="absolute -top-3.5 -right-3.5 bg-cyan-400 text-slate-950 font-mono-jb text-[10px] font-extrabold w-5.5 h-5.5 rounded-full flex items-center justify-center shadow-lg border-2 border-slate-950 animate-bounce">
             ${count}
           </span>
         ` : ''}
       </div>
-      <span class="truncate max-w-[150px] font-medium leading-none">${label}</span>
+      <span class="truncate max-w-[240px] font-semibold leading-none text-slate-100 tracking-wide">${label}</span>
     `;
 
     document.body.appendChild(ghost);
@@ -250,6 +314,11 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
 
   // Clique em áudio para gerenciar seleção múltipla
   const handleAudioClick = (e: React.MouseEvent, clickedAudio: Transcription) => {
+    setActiveMenuId(null);
+    // Limpa a seleção de pastas ao selecionar áudio
+    setSelectedFolderIds([]);
+    setSelectionAnchorFolderId(null);
+
     if (e.shiftKey && selectionAnchorId) {
       const indexAnchor = sortedTranscriptions.findIndex(t => t.id === selectionAnchorId);
       const indexClicked = sortedTranscriptions.findIndex(t => t.id === clickedAudio.id);
@@ -272,7 +341,38 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
     } else {
       setSelectedAudioIds([clickedAudio.id]);
       setSelectionAnchorId(clickedAudio.id);
-      setSelectedId(clickedAudio.id);
+    }
+  };
+
+  // Clique em pasta para gerenciar seleção múltipla
+  const handleFolderClick = (e: React.MouseEvent, clickedFolder: Folder) => {
+    setActiveMenuId(null);
+    // Limpa a seleção de áudios ao selecionar pasta
+    setSelectedAudioIds([]);
+    setSelectionAnchorId(null);
+
+    if (e.shiftKey && selectionAnchorFolderId) {
+      const indexAnchor = currentFolders.findIndex(f => f.id === selectionAnchorFolderId);
+      const indexClicked = currentFolders.findIndex(f => f.id === clickedFolder.id);
+
+      if (indexAnchor !== -1 && indexClicked !== -1) {
+        const start = Math.min(indexAnchor, indexClicked);
+        const MathEnd = Math.max(indexAnchor, indexClicked);
+        const sliced = currentFolders.slice(start, MathEnd + 1);
+        setSelectedFolderIds(sliced.map(f => f.id));
+      }
+    } else if (e.ctrlKey || e.metaKey) {
+      setSelectedFolderIds(prev => {
+        if (prev.includes(clickedFolder.id)) {
+          return prev.filter(id => id !== clickedFolder.id);
+        } else {
+          return [...prev, clickedFolder.id];
+        }
+      });
+      setSelectionAnchorFolderId(clickedFolder.id);
+    } else {
+      setSelectedFolderIds([clickedFolder.id]);
+      setSelectionAnchorFolderId(clickedFolder.id);
     }
   };
 
@@ -287,6 +387,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
 
     setActiveDraggedAudioIds(targetIds);
     setActiveDraggedFolderId(null); // Garante que não mistura
+    setActiveDraggedFolderIds([]);
 
     e.dataTransfer.setData('application/json', JSON.stringify({
       type: 'audio-batch',
@@ -298,7 +399,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
       'audio',
       targetIds.length === 1 ? (audio.title || audio.file_name) : `${targetIds.length} arquivos`
     );
-    e.dataTransfer.setDragImage(ghost, 20, 20);
+    e.dataTransfer.setDragImage(ghost, 45, 45);
     setTimeout(() => {
       if (document.body.contains(ghost)) {
         document.body.removeChild(ghost);
@@ -312,16 +413,28 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
 
   // Handlers para arrastar Pastas
   const handleFolderDragStart = (e: React.DragEvent, folder: Folder) => {
+    let targetIds = selectedFolderIds;
+    if (!selectedFolderIds.includes(folder.id)) {
+      targetIds = [folder.id];
+      setSelectedFolderIds(targetIds);
+      setSelectionAnchorFolderId(folder.id);
+    }
+
+    setActiveDraggedFolderIds(targetIds);
     setActiveDraggedFolderId(folder.id);
     setActiveDraggedAudioIds([]); // Garante que não mistura
 
     e.dataTransfer.setData('application/json', JSON.stringify({
-      type: 'folder',
-      folderId: folder.id
+      type: 'folder-batch',
+      folderIds: targetIds
     }));
 
-    const ghost = createDragGhost(1, 'folder', folder.name);
-    e.dataTransfer.setDragImage(ghost, 20, 20);
+    const ghost = createDragGhost(
+      targetIds.length,
+      'folder',
+      targetIds.length === 1 ? folder.name : `${targetIds.length} pastas`
+    );
+    e.dataTransfer.setDragImage(ghost, 45, 45);
     setTimeout(() => {
       if (document.body.contains(ghost)) {
         document.body.removeChild(ghost);
@@ -331,11 +444,25 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
 
   const handleFolderDragEnd = () => {
     setActiveDraggedFolderId(null);
+    setActiveDraggedFolderIds([]);
   };
 
   // Validação de Destino do Drop
   const isDropTargetValid = (targetFolderId: string | null) => {
-    if (activeDraggedFolderId) {
+    if (activeDraggedFolderIds.length > 0) {
+      if (targetFolderId && activeDraggedFolderIds.includes(targetFolderId)) return false;
+      
+      for (const id of activeDraggedFolderIds) {
+        const descendants = getDescendantFolderIds(id, folders);
+        if (targetFolderId && descendants.includes(targetFolderId)) return false;
+      }
+      
+      const allAlreadyInTarget = activeDraggedFolderIds.every(id => {
+        const folder = folders.find(f => f.id === id);
+        return folder && folder.parent_id === targetFolderId;
+      });
+      if (allAlreadyInTarget) return false;
+    } else if (activeDraggedFolderId) {
       if (activeDraggedFolderId === targetFolderId) return false;
       const descendants = getDescendantFolderIds(activeDraggedFolderId, folders);
       if (targetFolderId && descendants.includes(targetFolderId)) return false;
@@ -385,10 +512,31 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
     setDragOverFolderId(null);
     setDragOverBreadcrumbId(null);
 
-    // Mover pasta
-    if (activeDraggedFolderId) {
+    // Mover pastas
+    if (activeDraggedFolderIds.length > 0) {
+      const folderIds = [...activeDraggedFolderIds];
+      
+      setFolders(prev => prev.map(f => folderIds.includes(f.id) ? { ...f, parent_id: targetFolderId } : f));
+      setActiveDraggedFolderIds([]);
+      setActiveDraggedFolderId(null);
+      setSelectedFolderIds([]);
+      setSelectionAnchorFolderId(null);
+
+      try {
+        await Promise.all(folderIds.map(async (fid) => {
+          const response = await fetch(`/api/folders/${fid}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ parent_id: targetFolderId })
+          });
+          if (!response.ok) throw new Error(`Falha ao mover pasta ${fid}`);
+        }));
+      } catch (err) {
+        console.error(err);
+        fetchFolders(); // Restabelece em caso de falha
+      }
+    } else if (activeDraggedFolderId) {
       const folderId = activeDraggedFolderId;
-      // Atualização otimista
       setFolders(prev => prev.map(f => f.id === folderId ? { ...f, parent_id: targetFolderId } : f));
       setActiveDraggedFolderId(null);
 
@@ -408,7 +556,6 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
     // Mover áudios
     if (activeDraggedAudioIds.length > 0) {
       const audioIds = [...activeDraggedAudioIds];
-      // Atualização otimista
       setTranscriptions(prev => prev.map(t => audioIds.includes(t.id) ? { ...t, folder_id: targetFolderId } : t));
       
       setSelectedAudioIds([]);
@@ -457,6 +604,41 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
     }
   };
 
+  // Confirma e executa a movimentação em lote (de áudios ou pastas) via Modal
+  const handleConfirmMove = async () => {
+    setIsMoveModalOpen(false);
+    const targetFolderId = moveTargetFolderId;
+
+    // Se estiver movendo áudios
+    if (selectedAudioIds.length > 0) {
+      await handleBatchMove(targetFolderId);
+    }
+    
+    // Se estiver movendo pastas
+    if (selectedFolderIds.length > 0) {
+      const folderIds = [...selectedFolderIds];
+      
+      // Atualização otimista
+      setFolders(prev => prev.map(f => folderIds.includes(f.id) ? { ...f, parent_id: targetFolderId } : f));
+      setSelectedFolderIds([]);
+      setSelectionAnchorFolderId(null);
+
+      try {
+        await Promise.all(folderIds.map(async (fid) => {
+          const response = await fetch(`/api/folders/${fid}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ parent_id: targetFolderId })
+          });
+          if (!response.ok) throw new Error(`Falha ao mover pasta ${fid}`);
+        }));
+      } catch (err) {
+        console.error("Erro ao mover pastas em lote:", err);
+        fetchFolders(); // Restabelece em caso de falha
+      }
+    }
+  };
+
   // Solicitação de exclusão em lote de áudios selecionados
   const handleBatchDeleteRequest = () => {
     setDeleteModal({
@@ -467,6 +649,42 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
       message: `Tem certeza que deseja excluir os ${selectedAudioIds.length} áudios selecionados? Essa ação é permanente e não poderá ser desfeita.`
     });
   };
+
+  // Atalho de teclado para excluir com a tecla Delete
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignorar se o usuário estiver digitando em campos de entrada
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
+      if (e.key === 'Delete') {
+        if (selectedAudioIds.length > 0) {
+          e.preventDefault();
+          handleBatchDeleteRequest();
+        } else if (selectedFolderIds.length > 0) {
+          e.preventDefault();
+          setDeleteModal({
+            isOpen: true,
+            type: 'folder',
+            id: 'batch-folders',
+            title: 'Excluir Pastas em Lote',
+            message: `Tem certeza que deseja excluir as ${selectedFolderIds.length} pastas selecionadas? Todos os áudios dentro delas serão movidos para a raiz.`
+          });
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedAudioIds, selectedFolderIds]);
 
   // Fechar dropdowns de ação ao clicar fora e cancelar edição de detalhes
   useEffect(() => {
@@ -614,23 +832,45 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
     setDeleteModal(prev => ({ ...prev, isOpen: false }));
 
     if (type === 'folder') {
-      try {
-        const response = await fetch(`/api/folders/${id}`, {
-          method: 'DELETE'
-        });
-        if (response.ok) {
-          const deletedIds = [id, ...getDescendantFolderIds(id, folders)];
-          setFolders(prev => prev.filter(f => !deletedIds.includes(f.id)));
-          setTranscriptions(prev => prev.map(t => t.folder_id && deletedIds.includes(t.folder_id) ? { ...t, folder_id: null } : t));
-          if (selectedFolderId && deletedIds.includes(selectedFolderId)) {
-            // Voltar para a pasta pai (se ela existir e não foi excluída) ou para a raiz
-            const folderToDelete = folders.find(f => f.id === id);
-            const parentId = folderToDelete?.parent_id;
-            setSelectedFolderId(parentId && !deletedIds.includes(parentId) ? parentId : null);
-          }
+      if (id === 'batch-folders') {
+        const folderIds = [...selectedFolderIds];
+        setSelectedFolderIds([]);
+        setSelectionAnchorFolderId(null);
+
+        // Atualização otimista
+        setFolders(prev => prev.filter(f => !folderIds.includes(f.id)));
+        setTranscriptions(prev => prev.map(t => t.folder_id && folderIds.includes(t.folder_id) ? { ...t, folder_id: null } : t));
+
+        try {
+          await Promise.all(folderIds.map(async (fid) => {
+            const response = await fetch(`/api/folders/${fid}`, {
+              method: 'DELETE'
+            });
+            if (!response.ok) throw new Error(`Falha ao excluir pasta ${fid}`);
+          }));
+        } catch (err) {
+          console.error('Erro ao deletar pastas em lote:', err);
+          fetchFolders();
+          fetchTranscriptions();
         }
-      } catch (err) {
-        console.error('Erro ao deletar pasta:', err);
+      } else {
+        try {
+          const response = await fetch(`/api/folders/${id}`, {
+            method: 'DELETE'
+          });
+          if (response.ok) {
+            const deletedIds = [id, ...getDescendantFolderIds(id, folders)];
+            setFolders(prev => prev.filter(f => !deletedIds.includes(f.id)));
+            setTranscriptions(prev => prev.map(t => t.folder_id && deletedIds.includes(t.folder_id) ? { ...t, folder_id: null } : t));
+            if (selectedFolderId && deletedIds.includes(selectedFolderId)) {
+              const folderToDelete = folders.find(f => f.id === id);
+              const parentId = folderToDelete?.parent_id;
+              setSelectedFolderId(parentId && !deletedIds.includes(parentId) ? parentId : null);
+            }
+          }
+        } catch (err) {
+          console.error('Erro ao deletar pasta:', err);
+        }
       }
     } else if (type === 'transcription') {
       if (id === 'batch') {
@@ -679,21 +919,24 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
         draggable="true"
         onDragStart={(e) => handleAudioDragStart(e, t)}
         onDragEnd={handleAudioDragEnd}
-        className={`group relative flex items-center rounded-xl border transition-all duration-200 font-geist select-none ${
+        onClick={(e) => {
+          e.stopPropagation();
+          handleAudioClick(e, t);
+        }}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          setSelectedId(t.id);
+        }}
+        className={`group relative flex items-center rounded-xl border transition-all duration-200 font-geist select-none cursor-pointer ${
           activeMenuId === t.id ? 'z-30' : 'z-0'
         } ${
           isHighlighted
-            ? 'bg-cyan-400/[0.06] border-cyan-400/30 text-white shadow-[inset_0_1px_1px_rgba(34,211,238,0.15)] scale-[1.01]'
+            ? 'bg-cyan-400/[0.06] border-cyan-400/30 text-white shadow-[inset_0_1px_1px_rgba(34,211,238,0.15)]'
             : 'bg-white/[0.01] border-white/[0.05] text-slate-300 hover:bg-white/[0.04] hover:border-white/10'
         }`}
+        title="Clique simples para selecionar. Duplo clique para abrir."
       >
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleAudioClick(e, t);
-          }}
-          className="flex-1 text-left p-3 pr-8 flex items-start gap-2.5 overflow-hidden cursor-pointer"
-        >
+        <div className="flex-1 p-3 pr-14 flex items-start gap-2.5 overflow-hidden">
           <FileText className={`h-4 w-4 shrink-0 mt-0.5 ${isHighlighted ? 'text-cyan-400' : 'text-slate-400'}`} />
           <div className="space-y-1 overflow-hidden flex-1">
             {editingId === t.id ? (
@@ -728,7 +971,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
               <span>{formatFileSize(t.file_size)}</span>
             </div>
           </div>
-        </button>
+        </div>
 
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 dropdown-menu-trigger">
           {editingId !== t.id && (
@@ -791,26 +1034,6 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                 <Edit2 className="h-3.5 w-3.5 text-slate-500 shrink-0" />
                 <span>Renomear</span>
               </button>
-
-              {foldersWithPaths.length > 0 && (
-                <div className="h-px bg-white/5 my-1" />
-              )}
-              {foldersWithPaths.map(f => (
-                <button
-                  key={f.id}
-                  onClick={() => {
-                    handleMoveToFolder(t.id, t.folder_id === f.id ? null : f.id);
-                    setActiveMenuId(null);
-                  }}
-                  className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/5 transition cursor-pointer"
-                >
-                  <span className="flex items-center gap-2 truncate">
-                    <Folder className="h-3.5 w-3.5 text-slate-500 shrink-0" />
-                    <span className="truncate" title={f.path}>{f.path}</span>
-                  </span>
-                  {t.folder_id === f.id && <Check className="h-3 w-3 text-cyan-400 shrink-0" />}
-                </button>
-              ))}
 
               <div className="h-px bg-white/5 my-1" />
               <button
@@ -1141,7 +1364,15 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
   };
 
   return (
-    <div className="relative flex-1 md:h-screen flex flex-col md:grid md:grid-cols-[280px_1fr] bg-[#080c14] text-slate-100 overflow-hidden font-sans">
+    <div 
+      onClick={() => {
+        setSelectedAudioIds([]);
+        setSelectedFolderIds([]);
+        setSelectionAnchorId(null);
+        setSelectionAnchorFolderId(null);
+      }}
+      className="relative flex-1 h-screen flex flex-col md:grid md:grid-cols-[280px_1fr] bg-[#080c14] text-slate-100 overflow-hidden font-sans"
+    >
       
       {/* Background Blobs Aura Estética */}
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none opacity-80">
@@ -1164,6 +1395,8 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
               setSelectedFolderId(null);
               setSelectedAudioIds([]);
               setSelectionAnchorId(null);
+              setSelectedFolderIds([]);
+              setSelectionAnchorFolderId(null);
               setSearchQuery('');
             }}
             className="flex items-center gap-2.5 cursor-pointer text-left hover:opacity-80 transition"
@@ -1183,6 +1416,10 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
             onClick={() => {
               setActiveTab('transcribe');
               setSelectedId(null);
+              setSelectedAudioIds([]);
+              setSelectionAnchorId(null);
+              setSelectedFolderIds([]);
+              setSelectionAnchorFolderId(null);
             }}
             className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border transition-all duration-200 text-xs font-semibold cursor-pointer ${
               activeTab === 'transcribe'
@@ -1198,6 +1435,10 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
             onClick={() => {
               setActiveTab('files');
               setSelectedId(null);
+              setSelectedAudioIds([]);
+              setSelectionAnchorId(null);
+              setSelectedFolderIds([]);
+              setSelectionAnchorFolderId(null);
             }}
             className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border transition-all duration-200 text-xs font-semibold cursor-pointer ${
               activeTab === 'files'
@@ -1213,6 +1454,10 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
             onClick={() => {
               setActiveTab('profile');
               setSelectedId(null);
+              setSelectedAudioIds([]);
+              setSelectionAnchorId(null);
+              setSelectedFolderIds([]);
+              setSelectionAnchorFolderId(null);
             }}
             className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border transition-all duration-200 text-xs font-semibold cursor-pointer ${
               activeTab === 'profile'
@@ -1254,10 +1499,10 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
       {/* ==========================================
            2. ÁREA CENTRAL (UPLOAD & RESULTADOS)
            ========================================== */}
-      <main className="relative z-10 flex-1 flex flex-col min-w-0">
+      <main className="relative z-10 flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         
         {/* Top Header do Dashboard */}
-        <header className="h-16 flex items-center justify-between px-6 border-b border-white/[0.08] bg-[#080c14]/40 backdrop-blur-md">
+        <header className="h-16 flex items-center justify-between px-6 border-b border-white/[0.12] bg-[#080c14]/40 backdrop-blur-md">
           <div className="flex items-center gap-3">
             {selectedTranscription && (
               <button
@@ -1287,7 +1532,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                             setSelectionAnchorId(null);
                             setActiveTab('files'); // Direciona para a aba files
                           }}
-                          className={`transition cursor-pointer text-left truncate max-w-[300px] ${
+                          className={`transition cursor-pointer text-left truncate max-w-[600px] ${
                             isLast ? 'text-cyan-400 font-semibold hover:text-cyan-300' : 'hover:text-white'
                           }`}
                           title={crumb.name}
@@ -1295,7 +1540,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                           {crumb.name}
                         </button>
                       ) : (
-                        <span className="text-cyan-400 font-semibold truncate max-w-[300px] leading-tight" title={crumb.name}>
+                        <span className="text-cyan-400 font-semibold truncate max-w-[600px] leading-tight" title={crumb.name}>
                           {crumb.name}
                         </span>
                       )}
@@ -1621,10 +1866,21 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
               {activeTab === 'files' && (
                 
                 /* Caso 4: Gerenciador de Arquivos/Pastas Completo no Centro */
-                <div className="flex-1 w-full max-w-5xl mx-auto flex flex-col justify-start relative z-10 animate-fade-in space-y-6">
+                <div 
+                  onClick={() => {
+                    setSelectedAudioIds([]);
+                    setSelectedFolderIds([]);
+                    setSelectionAnchorId(null);
+                    setSelectionAnchorFolderId(null);
+                  }}
+                  className="flex-1 w-full max-w-5xl mx-auto flex flex-col justify-start relative z-10 animate-fade-in space-y-6 min-h-0 overflow-hidden"
+                >
                   
                   {/* Cabeçalho de Busca e Controles do Gerenciador */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#090f1a]/50 p-4 rounded-2xl border border-white/[0.06] backdrop-blur-md">
+                  <div 
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#090f1a]/50 p-4 rounded-2xl border border-white/[0.06] backdrop-blur-md"
+                  >
                     
                     {/* Input de Busca */}
                     <div className="relative flex-1 max-w-md">
@@ -1669,7 +1925,10 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
 
                   {/* Criação Dinâmica de Pasta */}
                   {isCreatingFolder && (
-                    <div className="p-4 rounded-2xl bg-[#090f1a]/50 border border-white/[0.06] backdrop-blur-md animate-fade-in max-w-md">
+                    <div 
+                      onClick={(e) => e.stopPropagation()}
+                      className="p-4 rounded-2xl bg-[#090f1a]/50 border border-white/[0.06] backdrop-blur-md animate-fade-in max-w-md"
+                    >
                       <form onSubmit={handleCreateFolder} className="flex flex-col gap-3">
                         <h4 className="text-xs font-semibold text-slate-300 font-geist">Criar Nova Pasta</h4>
                         <div className="flex gap-2">
@@ -1705,34 +1964,47 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                     </div>
                   )}
 
-                  {/* Barra de Ações em Lote */}
-                  {selectedAudioIds.length > 0 && (
-                    <div className="p-3.5 rounded-2xl bg-cyan-950/30 border border-cyan-400/20 flex items-center justify-between text-xs text-slate-200 animate-fade-in gap-4 shadow-lg backdrop-blur-md">
-                      <span className="font-semibold text-xs bg-cyan-500/10 text-cyan-400 px-3.5 py-1.5 rounded-full font-geist">
-                        {selectedAudioIds.length} {selectedAudioIds.length === 1 ? 'item selecionado' : 'itens selecionados'}
+                  {/* Barra de Ações em Lote (Áudios ou Pastas) */}
+                  {(selectedAudioIds.length > 0 || selectedFolderIds.length > 0) && (
+                    <div 
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 p-3.5 rounded-2xl bg-slate-950/95 border-2 border-cyan-400/40 flex items-center justify-between text-xs text-slate-200 animate-fade-in gap-8 shadow-[0_15px_50px_rgba(0,0,0,0.85)] backdrop-blur-xl max-w-2xl w-[90%] md:min-w-[620px]"
+                    >
+                      <span className="font-semibold text-xs bg-cyan-500/10 text-cyan-400 px-3.5 py-1.5 rounded-full font-geist shrink-0">
+                        {selectedAudioIds.length > 0 
+                          ? `${selectedAudioIds.length} ${selectedAudioIds.length === 1 ? 'áudio selecionado' : 'áudios selecionados'}`
+                          : `${selectedFolderIds.length} ${selectedFolderIds.length === 1 ? 'pasta selecionada' : 'pastas selecionadas'}`
+                        }
                       </span>
                       
-                      <div className="flex items-center gap-3 min-w-0 flex-1 justify-end">
-                        <select
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (val) {
-                              handleBatchMove(val);
-                              e.target.value = "";
-                            }
+                      <div className="flex items-center gap-3.5 min-w-0 flex-1 justify-end">
+                        <button
+                          onClick={() => {
+                            setMoveTargetFolderId(null);
+                            setIsMoveModalOpen(true);
                           }}
-                          className="bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-cyan-400 transition cursor-pointer font-geist max-w-[200px]"
-                          defaultValue=""
+                          className="relative flex items-center justify-between gap-6 bg-slate-950 border border-white/10 rounded-xl px-4 py-2.5 text-[11px] text-slate-300 hover:text-white hover:border-cyan-400/50 transition cursor-pointer font-geist text-left w-[210px] shrink-0"
                         >
-                          <option value="" disabled hidden>Mover selecionados para...</option>
-                          <option value="raiz">Início (Raiz)</option>
-                          {foldersWithPaths.map(f => (
-                            <option key={f.id} value={f.id}>{f.path}</option>
-                          ))}
-                        </select>
+                          <span className="truncate font-medium">
+                            {selectedAudioIds.length > 0 ? 'Mover selecionados para...' : 'Mover selecionadas para...'}
+                          </span>
+                          <ChevronRight className="h-3.5 w-3.5 text-slate-400 rotate-90 shrink-0" />
+                        </button>
 
                         <button
-                          onClick={handleBatchDeleteRequest}
+                          onClick={() => {
+                            if (selectedAudioIds.length > 0) {
+                              handleBatchDeleteRequest();
+                            } else {
+                              setDeleteModal({
+                                isOpen: true,
+                                type: 'folder',
+                                id: 'batch-folders',
+                                title: 'Excluir Pastas em Lote',
+                                message: `Tem certeza que deseja excluir as ${selectedFolderIds.length} pastas selecionadas? Todos os áudios dentro delas serão movidos para a raiz.`
+                              });
+                            }
+                          }}
                           className="px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 hover:text-red-300 hover:bg-red-500/20 transition cursor-pointer flex items-center gap-1.5 font-semibold shrink-0"
                           title="Excluir selecionados"
                         >
@@ -1744,6 +2016,8 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                           onClick={() => {
                             setSelectedAudioIds([]);
                             setSelectionAnchorId(null);
+                            setSelectedFolderIds([]);
+                            setSelectionAnchorFolderId(null);
                             setSelectedId(null);
                           }}
                           className="p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-white/5 transition cursor-pointer shrink-0"
@@ -1756,45 +2030,59 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                   )}
 
                   {/* Gerenciador Central de Arquivos (Grid & Lista) */}
-                  <div className="flex-1 bg-[#090f1a]/40 border border-white/[0.06] rounded-[2rem] p-6 backdrop-blur-md flex flex-col min-h-0 overflow-hidden relative">
+                  <div 
+                    onClick={() => {
+                      setSelectedAudioIds([]);
+                      setSelectedFolderIds([]);
+                      setSelectionAnchorId(null);
+                      setSelectionAnchorFolderId(null);
+                    }}
+                    className="flex-1 bg-[#090f1a]/40 border border-white/[0.06] rounded-[2rem] p-6 backdrop-blur-md flex flex-col min-h-0 overflow-hidden relative"
+                  >
                     <div className="absolute inset-0 opacity-[0.01] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '1.5rem 1.5rem' }}></div>
                     
-                    <div className="flex-1 overflow-y-auto custom-scroll pr-1 space-y-6 relative z-10">
+                    <div 
+                      onClick={() => {
+                        setSelectedAudioIds([]);
+                        setSelectedFolderIds([]);
+                        setSelectionAnchorId(null);
+                        setSelectionAnchorFolderId(null);
+                      }}
+                      className="flex-1 overflow-y-auto custom-scroll px-5 py-2.5 space-y-6 relative z-10"
+                    >
                       
                       {/* Breadcrumbs locais */}
-                      {selectedFolderId !== null && (
-                        <div className="flex flex-wrap items-center gap-1.5 text-xs font-medium font-geist text-slate-400 pb-3 border-b border-white/[0.06]">
-                          {getBreadcrumbs.map((crumb, idx) => {
-                            const isDragOver = dragOverBreadcrumbId === (crumb.id === null ? 'root' : crumb.id);
-                            return (
-                              <div key={crumb.id || 'root'} className="flex items-center gap-1.5 animate-fade-in">
-                                {idx > 0 && <ChevronRight className="h-4 w-4 text-slate-600 shrink-0" />}
-                                <button
-                                  onClick={() => {
-                                    setSelectedFolderId(crumb.id);
-                                    setSelectedId(null);
-                                    setSelectedAudioIds([]);
-                                    setSelectionAnchorId(null);
-                                  }}
-                                  onDragOver={(e) => handleCrumbDragOver(e, crumb.id)}
-                                  onDragLeave={handleCrumbDragLeave}
-                                  onDrop={(e) => handleDropOnFolder(e, crumb.id)}
-                                  className={`transition-all duration-200 cursor-pointer text-left truncate max-w-[120px] px-2 py-1 rounded-lg ${
-                                    isDragOver
-                                      ? 'text-cyan-400 bg-cyan-400/10 border border-cyan-400/20 shadow-md scale-105'
-                                      : idx === getBreadcrumbs.length - 1
-                                        ? 'text-cyan-400 font-semibold bg-cyan-400/[0.03] border border-cyan-400/10'
-                                        : 'hover:text-white hover:bg-white/5'
-                                  }`}
-                                  title={crumb.name}
-                                >
-                                  {crumb.name}
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs font-medium font-geist text-slate-400 pb-3 border-b border-white/[0.06]">
+                        {getBreadcrumbs.map((crumb, idx) => {
+                          const isDragOver = dragOverBreadcrumbId === (crumb.id === null ? 'root' : crumb.id);
+                          return (
+                            <div key={crumb.id || 'root'} className="flex items-center gap-1.5 animate-fade-in">
+                              {idx > 0 && <ChevronRight className="h-4 w-4 text-slate-600 shrink-0" />}
+                              <button
+                                onClick={() => {
+                                  setSelectedFolderId(crumb.id);
+                                  setSelectedId(null);
+                                  setSelectedAudioIds([]);
+                                  setSelectionAnchorId(null);
+                                }}
+                                onDragOver={(e) => handleCrumbDragOver(e, crumb.id)}
+                                onDragLeave={handleCrumbDragLeave}
+                                onDrop={(e) => handleDropOnFolder(e, crumb.id)}
+                                className={`transition-all duration-200 cursor-pointer text-left truncate max-w-[450px] px-2 py-1 rounded-lg border focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/50 ${
+                                  isDragOver
+                                    ? 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20 shadow-md scale-105'
+                                    : idx === getBreadcrumbs.length - 1
+                                      ? 'text-cyan-400 font-semibold bg-cyan-400/[0.03] border border-cyan-400/10'
+                                      : 'text-slate-400 border-transparent hover:text-white hover:bg-white/5'
+                                }`}
+                                title={crumb.name}
+                              >
+                                {crumb.name}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
 
                       {/* Nome e Edição da Pasta Ativa */}
                       {selectedFolderId !== null && (
@@ -1858,11 +2146,27 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                                   onDragOver={(e) => handleFolderDragOver(e, f.id)}
                                   onDragLeave={handleFolderDragLeave}
                                   onDrop={(e) => handleDropOnFolder(e, f.id)}
-                                  className={`group relative flex items-center justify-between rounded-2xl border p-4 text-left transition-all duration-200 text-slate-300 font-geist ${
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleFolderClick(e, f);
+                                  }}
+                                  onDoubleClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedFolderId(f.id);
+                                    setSelectedId(null);
+                                    setSelectedAudioIds([]);
+                                    setSelectionAnchorId(null);
+                                    setSelectedFolderIds([]);
+                                    setSelectionAnchorFolderId(null);
+                                  }}
+                                  className={`group relative flex items-center justify-between rounded-2xl border p-4 text-left transition-all duration-200 text-slate-300 font-geist cursor-pointer ${
                                     isDragOver
-                                      ? 'bg-cyan-400/[0.08] border-cyan-400/50 shadow-[0_0_15px_rgba(34,211,238,0.15)] text-white scale-[1.02]'
-                                      : 'border-white/[0.05] bg-white/[0.01] hover:bg-white/[0.04] hover:border-white/10'
+                                      ? 'bg-cyan-500/15 border-cyan-400 border-2 shadow-[0_0_25px_rgba(34,211,238,0.3)] text-white scale-[1.05] animate-pulse'
+                                      : selectedFolderIds.includes(f.id)
+                                        ? 'bg-cyan-400/[0.06] border-cyan-400/35 text-white shadow-[inset_0_1px_1px_rgba(34,211,238,0.2)]'
+                                        : 'border-white/[0.05] bg-white/[0.01] hover:bg-white/[0.04] hover:border-white/10'
                                   }`}
+                                  title="Clique simples para selecionar. Duplo clique para abrir."
                                 >
                                   {isEditing ? (
                                     <input
@@ -1883,18 +2187,10 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                                     />
                                   ) : (
                                     <>
-                                      <button
-                                        onClick={() => {
-                                          setSelectedFolderId(f.id);
-                                          setSelectedId(null);
-                                          setSelectedAudioIds([]);
-                                          setSelectionAnchorId(null);
-                                        }}
-                                        className="flex-1 flex items-center gap-3 text-xs font-semibold cursor-pointer text-left font-geist pr-2"
-                                      >
+                                      <div className="flex-1 flex items-center gap-3 text-xs font-semibold text-left font-geist pr-2">
                                         <Folder className="h-5 w-5 text-cyan-400 shrink-0" />
-                                        <span className="line-clamp-2 whitespace-normal break-words leading-tight flex-1">{f.name}</span>
-                                      </button>
+                                        <span className="line-clamp-6 whitespace-normal break-words leading-tight flex-1">{f.name}</span>
+                                      </div>
                                       
                                       <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition shrink-0 ml-1">
                                         <button
@@ -2138,7 +2434,10 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
            3. PAINEL FLUTUANTE DE FILA (UPLOAD)
            ========================================== */}
       {queue.length > 0 && (
-        <div className="fixed bottom-6 right-6 z-50 w-96 bg-[#090f1a]/95 backdrop-blur-2xl border border-white/10 shadow-2xl rounded-2xl overflow-hidden transition-all duration-300">
+        <div 
+          onClick={(e) => e.stopPropagation()}
+          className="fixed bottom-6 right-6 z-50 w-96 bg-[#090f1a]/95 backdrop-blur-2xl border border-white/10 shadow-2xl rounded-2xl overflow-hidden transition-all duration-300"
+        >
           
           {/* Cabeçalho do Painel */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-white/[0.02]">
@@ -2246,7 +2545,10 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
 
       {/* Modal Customizado de Confirmação de Exclusão */}
       {deleteModal.isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
+        <div 
+          onClick={(e) => e.stopPropagation()}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in"
+        >
           <div className="w-full max-w-md rounded-[2.5rem] border border-white/10 bg-[#090f1a]/95 p-8 shadow-2xl relative overflow-hidden text-center font-geist">
             {/* Background Blob */}
             <div className="absolute top-[-20%] left-[-20%] w-60 h-60 rounded-full bg-red-900/10 blur-[4rem] pointer-events-none"></div>
@@ -2282,6 +2584,109 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                   className="flex-1 inline-flex justify-center items-center rounded-full bg-transparent hover:bg-red-500/10 text-red-400 hover:text-red-300 border border-red-500/20 hover:border-red-500/40 px-5 py-3 text-xs font-semibold transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
                 >
                   Confirmar Exclusão
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Customizado de Mover Hierárquico */}
+      {isMoveModalOpen && (
+        <div 
+          onClick={() => setIsMoveModalOpen(false)} 
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()} 
+            className="w-full max-w-lg rounded-[2.5rem] border border-white/10 bg-[#090f1a]/95 p-8 shadow-2xl relative overflow-hidden flex flex-col max-h-[85vh] font-geist"
+          >
+            {/* Background Blob */}
+            <div className="absolute top-[-20%] left-[-20%] w-60 h-60 rounded-full bg-cyan-900/10 blur-[4rem] pointer-events-none"></div>
+
+            <div className="relative z-10 flex flex-col h-full min-h-0 space-y-5">
+              {/* Header */}
+              <div className="space-y-1.5 text-left">
+                <h3 className="text-lg font-semibold text-white tracking-tight flex items-center gap-2">
+                  <FolderOpen className="h-5 w-5 text-cyan-400" />
+                  Mover para...
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Selecione a pasta de destino para os {selectedAudioIds.length > 0 
+                    ? `${selectedAudioIds.length} ${selectedAudioIds.length === 1 ? 'áudio selecionado' : 'áudios selecionados'}`
+                    : `${selectedFolderIds.length} ${selectedFolderIds.length === 1 ? 'pasta selecionada' : 'pastas selecionadas'}`
+                  }.
+                </p>
+              </div>
+
+              {/* Lista de Pastas (Hierárquica) */}
+              <div className="flex-1 overflow-y-auto custom-scroll space-y-1 py-3 border-y border-white/[0.08] max-h-[45vh] pr-1">
+                {/* Opção Raiz (Início) */}
+                {(() => {
+                  const isValid = isMoveTargetValid(null);
+                  const isSelected = moveTargetFolderId === null;
+                  return (
+                    <button
+                      disabled={!isValid}
+                      onClick={() => setMoveTargetFolderId(null)}
+                      className={`w-full flex items-center gap-2.5 px-4 py-2 rounded-xl transition duration-150 text-xs text-left cursor-pointer select-none font-geist ${
+                        !isValid
+                          ? 'opacity-30 cursor-not-allowed text-slate-500'
+                          : isSelected
+                            ? 'bg-cyan-500/10 border border-cyan-400/30 text-cyan-300 font-semibold'
+                            : 'border border-transparent text-slate-300 hover:bg-white/[0.03] hover:text-white'
+                      }`}
+                    >
+                      <HardDrive className={`h-4 w-4 shrink-0 ${isSelected ? 'text-cyan-400' : 'text-slate-400'}`} />
+                      <span>Início (Raiz)</span>
+                    </button>
+                  );
+                })()}
+
+                {/* Subpastas Hierárquicas */}
+                {folderTree.map((f) => {
+                  const isValid = isMoveTargetValid(f.id);
+                  const isSelected = moveTargetFolderId === f.id;
+                  return (
+                    <button
+                      key={f.id}
+                      disabled={!isValid}
+                      onClick={() => setMoveTargetFolderId(f.id)}
+                      style={{ paddingLeft: `${(f.depth + 1) * 16 + 16}px` }}
+                      className={`w-full flex items-center gap-2.5 py-2 pr-4 rounded-xl transition duration-150 text-xs text-left cursor-pointer select-none font-geist ${
+                        !isValid
+                          ? 'opacity-30 cursor-not-allowed text-slate-500'
+                          : isSelected
+                            ? 'bg-cyan-500/10 border border-cyan-400/30 text-cyan-300 font-semibold'
+                            : 'border border-transparent text-slate-300 hover:bg-white/[0.03] hover:text-white'
+                      }`}
+                    >
+                      <Folder className={`h-4 w-4 shrink-0 ${isSelected ? 'text-cyan-400' : 'text-slate-400'}`} />
+                      <span className="truncate">{f.name}</span>
+                    </button>
+                  );
+                })}
+
+                {folderTree.length === 0 && (
+                  <div className="py-8 text-center text-xs text-slate-500">
+                    Nenhuma subpasta criada no sistema.
+                  </div>
+                )}
+              </div>
+
+              {/* Footer Buttons */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setIsMoveModalOpen(false)}
+                  className="flex-1 inline-flex justify-center items-center rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-slate-400 hover:text-slate-200 px-5 py-3 text-xs font-semibold transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleConfirmMove}
+                  className="flex-1 inline-flex justify-center items-center rounded-full bg-gradient-to-b from-cyan-400 to-cyan-500 hover:from-cyan-300 hover:to-cyan-400 border border-cyan-400 text-slate-950 px-5 py-3 text-xs font-semibold transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] shadow-[0_4px_12px_rgba(34,211,238,0.25)] hover:shadow-[0_6px_16px_rgba(34,211,238,0.35)] cursor-pointer"
+                >
+                  Confirmar Mover
                 </button>
               </div>
             </div>
