@@ -25,6 +25,11 @@
 body {
   background: var(--background);
   color: var(--foreground);
+  min-height: 100dvh;
+}
+
+.mobile-bottom-nav {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
 }
 
 /* Custom Scrollbar - Global & Element Specific */
@@ -159,4 +164,3 @@ body {
 .animate-float-3d {
   animation: float3d 6s ease-in-out infinite;
 }
-

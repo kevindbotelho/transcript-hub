@@ -51,7 +51,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden flex flex-col justify-center items-center px-6 py-12 bg-[#080c14] selection:bg-cyan-300/20 selection:text-cyan-200">
+    <div className="relative h-[100dvh] w-full overflow-y-auto flex flex-col items-center px-6 py-8 sm:py-12 bg-[#080c14] selection:bg-cyan-300/20 selection:text-cyan-200 custom-scroll">
       
       {/* Background Canvas e Nebulosas Flutuantes */}
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none opacity-80">
@@ -67,7 +67,7 @@ export default function LoginPage() {
         ></div>
       </div>
 
-      <div className="relative z-10 w-full max-w-[440px] mx-auto space-y-8">
+      <div className="relative z-10 w-full max-w-[440px] mx-auto my-auto space-y-8">
         
         {/* Header do Login */}
         <div className="text-center space-y-4">
@@ -186,4 +186,3 @@ export default function LoginPage() {
     </div>
   );
 }
-

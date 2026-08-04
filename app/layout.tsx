@@ -45,8 +45,7 @@ export default function RootLayout({
       lang="pt-BR"
       className={`${geistSans.variable} ${geistMono.variable} ${jakarta.variable} ${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="min-h-screen md:h-screen md:overflow-hidden flex flex-col bg-[#080c14] text-slate-100 font-sans">{children}</body>
+      <body className="h-[100dvh] min-h-[100dvh] overflow-hidden flex flex-col bg-[#080c14] text-slate-100 font-sans">{children}</body>
     </html>
   );
 }
-

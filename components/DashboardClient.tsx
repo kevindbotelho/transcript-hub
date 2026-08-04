@@ -65,6 +65,14 @@ interface DashboardClientProps {
   userEmail: string;
 }
 
+type DashboardTab = 'transcribe' | 'files' | 'profile';
+
+const MOBILE_NAV_ITEMS = [
+  { id: 'transcribe', label: 'Transcrever', icon: UploadCloud },
+  { id: 'files', label: 'Meus Áudios', icon: Folder },
+  { id: 'profile', label: 'Perfil', icon: User },
+] as const;
+
 export default function DashboardClient({ userEmail }: DashboardClientProps) {
   // Separar o nome do arquivo da extensão para renomeação padrão macOS
   const getBaseAndExt = (filename: string) => {
@@ -74,7 +82,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
   };
 
   const [transcriptions, setTranscriptions] = useState<Transcription[]>([]);
-  const [activeTab, setActiveTab] = useState<'transcribe' | 'files' | 'profile'>('transcribe');
+  const [activeTab, setActiveTab] = useState<DashboardTab>('transcribe');
   const [folders, setFolders] = useState<Folder[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -134,6 +142,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
   
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mainContentRef = useRef<HTMLDivElement>(null);
 
   // Obter caminhos completos de pastas (ex: Pasta A > Subpasta B)
   const getFolderPath = (folderId: string, allFolders: Folder[]): string => {
@@ -319,6 +328,16 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
     setSelectedFolderIds([]);
     setSelectionAnchorFolderId(null);
 
+    // A single tap should open the item on phones. Keyboard-assisted multi-selection
+    // remains unchanged on larger screens.
+    if (window.matchMedia('(max-width: 767px)').matches && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      setSelectedAudioIds([]);
+      setSelectionAnchorId(null);
+      setSelectedId(clickedAudio.id);
+      mainContentRef.current?.scrollTo({ top: 0 });
+      return;
+    }
+
     if (e.shiftKey && selectionAnchorId) {
       const indexAnchor = sortedTranscriptions.findIndex(t => t.id === selectionAnchorId);
       const indexClicked = sortedTranscriptions.findIndex(t => t.id === clickedAudio.id);
@@ -350,6 +369,14 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
     // Limpa a seleção de áudios ao selecionar pasta
     setSelectedAudioIds([]);
     setSelectionAnchorId(null);
+
+    if (window.matchMedia('(max-width: 767px)').matches && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      setSelectedFolderIds([]);
+      setSelectionAnchorFolderId(null);
+      setSelectedFolderId(clickedFolder.id);
+      setSelectedId(null);
+      return;
+    }
 
     if (e.shiftKey && selectionAnchorFolderId) {
       const indexAnchor = currentFolders.findIndex(f => f.id === selectionAnchorFolderId);
@@ -982,7 +1009,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                 setEditingTitle(getBaseAndExt(t.title || t.file_name).base);
                 setActiveMenuId(null);
               }}
-              className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-white/5 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+              className="p-2 md:p-1 rounded text-slate-400 md:text-slate-500 hover:text-slate-200 hover:bg-white/5 cursor-pointer opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200"
               title="Renomear áudio"
             >
               <Edit2 className="h-3.5 w-3.5" />
@@ -993,7 +1020,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
               e.stopPropagation();
               setActiveMenuId(prev => prev === t.id ? null : t.id);
             }}
-            className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-white/5 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+            className="p-2 md:p-1 rounded text-slate-400 md:text-slate-500 hover:text-slate-200 hover:bg-white/5 cursor-pointer opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200"
           >
             <MoreVertical className="h-3.5 w-3.5" />
           </button>
@@ -1363,6 +1390,17 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const navigateToTab = (tab: DashboardTab) => {
+    mainContentRef.current?.scrollTo({ top: 0 });
+    setActiveTab(tab);
+    setSelectedId(null);
+    setSelectedAudioIds([]);
+    setSelectionAnchorId(null);
+    setSelectedFolderIds([]);
+    setSelectionAnchorFolderId(null);
+    setActiveMenuId(null);
+  };
+
   return (
     <div 
       onClick={() => {
@@ -1371,7 +1409,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
         setSelectionAnchorId(null);
         setSelectionAnchorFolderId(null);
       }}
-      className="relative flex-1 h-screen flex flex-col md:grid md:grid-cols-[280px_1fr] bg-[#080c14] text-slate-100 overflow-hidden font-sans"
+      className="relative flex-1 h-[100dvh] min-h-[100dvh] flex flex-col md:grid md:grid-cols-[240px_minmax(0,1fr)] bg-[#080c14] text-slate-100 overflow-hidden font-sans"
     >
       
       {/* Background Blobs Aura Estética */}
@@ -1384,7 +1422,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
       {/* ==========================================
            1. SIDEBAR LATERAL (MENU DE NAVEGAÇÃO)
            ========================================== */}
-      <aside className="relative z-10 flex flex-col border-b md:border-b-0 md:border-r border-white/[0.08] bg-[#090f1a]/45 backdrop-blur-2xl h-full md:h-screen overflow-hidden select-none shrink-0 md:w-[240px]">
+      <aside className="relative z-10 hidden md:flex flex-col border-r border-white/[0.08] bg-[#090f1a]/45 backdrop-blur-2xl h-screen overflow-hidden select-none shrink-0 w-[240px]">
         
         {/* Header da Sidebar */}
         <div className="h-16 flex items-center justify-between px-5 border-b border-white/[0.08] bg-white/[0.02] shrink-0">
@@ -1413,14 +1451,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
         {/* Menu de Abas */}
         <nav className="flex-1 p-4 space-y-1.5 font-geist">
           <button
-            onClick={() => {
-              setActiveTab('transcribe');
-              setSelectedId(null);
-              setSelectedAudioIds([]);
-              setSelectionAnchorId(null);
-              setSelectedFolderIds([]);
-              setSelectionAnchorFolderId(null);
-            }}
+            onClick={() => navigateToTab('transcribe')}
             className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border transition-all duration-200 text-xs font-semibold cursor-pointer ${
               activeTab === 'transcribe'
                 ? 'bg-cyan-400/[0.06] border-cyan-400/30 text-white shadow-[inset_0_1px_1px_rgba(34,211,238,0.15)] scale-[1.01]'
@@ -1432,14 +1463,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
           </button>
 
           <button
-            onClick={() => {
-              setActiveTab('files');
-              setSelectedId(null);
-              setSelectedAudioIds([]);
-              setSelectionAnchorId(null);
-              setSelectedFolderIds([]);
-              setSelectionAnchorFolderId(null);
-            }}
+            onClick={() => navigateToTab('files')}
             className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border transition-all duration-200 text-xs font-semibold cursor-pointer ${
               activeTab === 'files'
                 ? 'bg-cyan-400/[0.06] border-cyan-400/30 text-white shadow-[inset_0_1px_1px_rgba(34,211,238,0.15)] scale-[1.01]'
@@ -1451,14 +1475,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
           </button>
 
           <button
-            onClick={() => {
-              setActiveTab('profile');
-              setSelectedId(null);
-              setSelectedAudioIds([]);
-              setSelectionAnchorId(null);
-              setSelectedFolderIds([]);
-              setSelectionAnchorFolderId(null);
-            }}
+            onClick={() => navigateToTab('profile')}
             className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border transition-all duration-200 text-xs font-semibold cursor-pointer ${
               activeTab === 'profile'
                 ? 'bg-cyan-400/[0.06] border-cyan-400/30 text-white shadow-[inset_0_1px_1px_rgba(34,211,238,0.15)] scale-[1.01]'
@@ -1499,25 +1516,27 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
       {/* ==========================================
            2. ÁREA CENTRAL (UPLOAD & RESULTADOS)
            ========================================== */}
-      <main className="relative z-10 flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+      <main className="relative z-10 flex-1 flex flex-col min-w-0 h-[100dvh] overflow-hidden">
         
         {/* Top Header do Dashboard */}
-        <header className="h-16 flex items-center justify-between px-6 border-b border-white/[0.12] bg-[#080c14]/40 backdrop-blur-md">
-          <div className="flex items-center gap-3">
+        <header className="h-16 shrink-0 flex items-center justify-between px-4 md:px-6 border-b border-white/[0.12] bg-[#080c14]/70 backdrop-blur-md">
+          <div className="flex min-w-0 items-center gap-2.5 md:gap-3">
+            {!selectedTranscription && (
+              <span aria-hidden="true" className="md:hidden w-8 h-8 rounded-full bg-gradient-to-b from-white to-slate-200 border border-white/20 shadow-md flex items-center justify-center shrink-0">
+                <AudioLines className="h-4 w-4 text-slate-950" />
+              </span>
+            )}
             {selectedTranscription && (
               <button
-                onClick={() => {
-                  setSelectedId(null);
-                  setActiveTab('files'); // Retorna para Meus Áudios
-                }}
-                className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300 text-xs font-medium transition cursor-pointer font-geist mr-2 group"
+                onClick={() => navigateToTab('files')}
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 md:px-3.5 py-1.5 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300 text-xs font-medium transition cursor-pointer font-geist md:mr-2 group shrink-0"
               >
                 <ArrowLeft className="h-3.5 w-3.5 text-slate-400 group-hover:text-white transition-colors" />
-                <span>Voltar</span>
+                <span className="hidden sm:inline">Voltar</span>
               </button>
             )}
             {getHeaderBreadcrumbs.length > 0 ? (
-              <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold font-geist text-slate-400 animate-fade-in">
+              <div className="flex min-w-0 flex-nowrap items-center gap-1.5 overflow-hidden text-xs font-semibold font-geist text-slate-400 animate-fade-in">
                 {getHeaderBreadcrumbs.map((crumb, idx) => {
                   const isLast = idx === getHeaderBreadcrumbs.length - 1;
                   return (
@@ -1526,13 +1545,14 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                       {crumb.type === 'folder' ? (
                         <button
                           onClick={() => {
+                            mainContentRef.current?.scrollTo({ top: 0 });
                             setSelectedFolderId(crumb.id);
                             setSelectedId(null); // Fecha tela de detalhes
                             setSelectedAudioIds([]);
                             setSelectionAnchorId(null);
                             setActiveTab('files'); // Direciona para a aba files
                           }}
-                          className={`transition cursor-pointer text-left truncate max-w-[600px] ${
+                          className={`transition cursor-pointer text-left truncate max-w-[48vw] md:max-w-[600px] ${
                             isLast ? 'text-cyan-400 font-semibold hover:text-cyan-300' : 'hover:text-white'
                           }`}
                           title={crumb.name}
@@ -1540,7 +1560,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                           {crumb.name}
                         </button>
                       ) : (
-                        <span className="text-cyan-400 font-semibold truncate max-w-[600px] leading-tight" title={crumb.name}>
+                        <span className="text-cyan-400 font-semibold truncate max-w-[48vw] md:max-w-[600px] leading-tight" title={crumb.name}>
                           {crumb.name}
                         </span>
                       )}
@@ -1557,7 +1577,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
           
           <div className="flex items-center gap-3">
             {!selectedTranscription && activeTab === 'transcribe' && (
-              <span className="text-[9px] font-mono-jb text-slate-500 uppercase tracking-widest bg-white/[0.03] border border-white/[0.08] px-2 py-0.5 rounded">
+              <span className="hidden sm:inline-flex text-[9px] font-mono-jb text-slate-500 uppercase tracking-widest bg-white/[0.03] border border-white/[0.08] px-2 py-0.5 rounded">
                 OpenAI gpt-4o-mini-transcribe
               </span>
             )}
@@ -1565,19 +1585,19 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
         </header>
 
         {/* Conteúdo Principal */}
-        <div className="flex-1 overflow-hidden p-6 md:p-8 flex flex-col">
+        <div ref={mainContentRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 pb-28 sm:p-6 sm:pb-28 md:overflow-hidden md:p-8 md:pb-8 flex flex-col custom-scroll">
           
           {selectedTranscription ? (
             
             /* Caso 2: Visualização de Transcrição Selecionada (Layout Lado a Lado / Fontes Ampliadas) */
-            <div className="flex-1 w-full max-w-5xl mx-auto flex flex-col justify-center py-4 relative z-10 animate-fade-in">
+            <div className="flex-1 w-full max-w-5xl mx-auto flex flex-col justify-start lg:justify-center py-2 md:py-4 relative z-10 animate-fade-in">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-stretch">
                 
                 {/* Coluna da Esquerda: Metadados e Ações */}
                 <div className="lg:col-span-4 w-full">
                   
                   {/* Card de Informações e Metadados */}
-                  <div className="rounded-[2rem] border border-white/[0.08] bg-[#090f1a]/70 p-6 backdrop-blur-2xl relative shadow-xl overflow-hidden group transition-all duration-300 hover:border-cyan-400/20 flex flex-col justify-between h-[520px]">
+                  <div className="rounded-2xl sm:rounded-[2rem] border border-white/[0.08] bg-[#090f1a]/70 p-5 sm:p-6 backdrop-blur-2xl relative shadow-xl overflow-hidden group transition-all duration-300 hover:border-cyan-400/20 flex flex-col justify-between h-auto lg:h-[520px]">
                     <div className="absolute inset-0 opacity-[0.015] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '1.5rem 1.5rem' }}></div>
                     
                     <div className="space-y-5 relative z-10 w-full flex-1">
@@ -1732,7 +1752,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                 </div>
 
                 {/* Coluna da Direita: Texto Transcrito com Tipografia Ampliada */}
-                <div className="lg:col-span-8 w-full rounded-[2rem] border border-white/[0.08] bg-[#090f1a]/70 p-6 sm:p-8 backdrop-blur-2xl relative shadow-xl overflow-hidden flex flex-col h-[520px] group transition-all duration-300 hover:border-cyan-400/20">
+                <div className="lg:col-span-8 w-full rounded-2xl sm:rounded-[2rem] border border-white/[0.08] bg-[#090f1a]/70 p-5 sm:p-8 backdrop-blur-2xl relative shadow-xl overflow-hidden flex flex-col min-h-[420px] lg:h-[520px] group transition-all duration-300 hover:border-cyan-400/20">
                   <div className="absolute inset-0 opacity-[0.015] pointer-events-none" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px)', backgroundSize: '30px 30px' }}></div>
                   
                   {/* Cabeçalho do Resultado */}
@@ -1760,24 +1780,24 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
               {activeTab === 'transcribe' && (
                 
                 /* Caso 3: Área de Upload Principal (Layout Lado a Lado / Fontes Ampliadas) */
-                <div className="flex-1 w-full max-w-5xl mx-auto flex flex-col justify-center py-6 relative z-10 animate-fade-in">
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 lg:items-stretch">
+                <div className="flex-1 w-full max-w-5xl mx-auto flex flex-col justify-start lg:justify-center py-2 sm:py-4 lg:py-6 relative z-10 animate-fade-in">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-12 lg:items-stretch">
                     
                     {/* Coluna da Esquerda: Introdução e Informações */}
-                    <div className="lg:col-span-5 space-y-8 text-left">
+                    <div className="lg:col-span-5 space-y-6 lg:space-y-8 text-left">
                       <div className="space-y-4">
-                        <h2 className="text-4xl lg:text-5xl font-light tracking-[-0.04em] text-white font-jakarta leading-tight">
+                        <h2 className="text-3xl sm:text-4xl lg:text-5xl font-light tracking-[-0.04em] text-white font-jakarta leading-tight">
                           Transcreva seu <br className="hidden lg:inline" />
                           <span className="font-semibold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500">Áudio com IA</span>
                         </h2>
-                        <p className="text-base text-slate-400 font-geist font-light leading-relaxed max-w-md">
+                        <p className="text-sm sm:text-base text-slate-400 font-geist font-light leading-relaxed max-w-md">
                           Envie notas de voz do iPhone, reuniões longas ou aulas de faculdade e obtenha a transcrição textual instantaneamente com alta precisão e pontuação inteligente.
                         </p>
                       </div>
 
                       {/* Banner Informativo / Recomendações em coluna vertical estilizada */}
                       <div className="space-y-4 max-w-md">
-                        <div className="rounded-2xl border border-white/[0.06] bg-[#090f1a]/50 p-5 space-y-2 relative overflow-hidden transition hover:border-cyan-400/20 group">
+                        <div className="rounded-2xl border border-white/[0.06] bg-[#090f1a]/50 p-4 sm:p-5 space-y-2 relative overflow-hidden transition hover:border-cyan-400/20 group">
                           <div className="flex items-center gap-2 text-[10px] font-mono-jb text-cyan-300 uppercase tracking-wider font-semibold">
                             <HardDrive className="h-4 w-4 text-cyan-400" />
                             <span>Limite de 25 MB</span>
@@ -1787,7 +1807,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                           </p>
                         </div>
 
-                        <div className="rounded-2xl border border-white/[0.06] bg-[#090f1a]/50 p-5 space-y-2 relative overflow-hidden transition hover:border-cyan-400/20 group">
+                        <div className="rounded-2xl border border-white/[0.06] bg-[#090f1a]/50 p-4 sm:p-5 space-y-2 relative overflow-hidden transition hover:border-cyan-400/20 group">
                           <div className="flex items-center gap-2 text-[10px] font-mono-jb text-cyan-300 uppercase tracking-wider font-semibold">
                             <PlayCircle className="h-4 w-4 text-cyan-400" />
                             <span>Formatos Compatíveis</span>
@@ -1808,7 +1828,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                         onDragLeave={handleDrag} 
                         onDrop={handleDrop}
                         onClick={triggerSelectFile}
-                        className={`relative w-full flex-1 h-full min-h-[380px] rounded-[2rem] border border-dashed transition-all duration-300 flex flex-col items-center justify-center p-8 text-center cursor-pointer overflow-hidden group bg-[#090f1a]/45 ${
+                        className={`relative w-full flex-1 h-full min-h-[300px] sm:min-h-[380px] rounded-2xl sm:rounded-[2rem] border border-dashed transition-all duration-300 flex flex-col items-center justify-center p-6 sm:p-8 text-center cursor-pointer overflow-hidden group bg-[#090f1a]/45 ${
                           isDragActive 
                             ? 'border-cyan-400 bg-cyan-400/[0.03] shadow-[0_0_25px_rgba(34,211,238,0.18)] scale-[1.01]' 
                             : 'border-white/10 hover:border-cyan-400/40 hover:bg-[#090f1a]/70 hover:shadow-[0_0_20px_rgba(34,211,238,0.06)]'
@@ -1873,7 +1893,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                     setSelectionAnchorId(null);
                     setSelectionAnchorFolderId(null);
                   }}
-                  className="flex-1 w-full max-w-5xl mx-auto flex flex-col justify-start relative z-10 animate-fade-in space-y-6 min-h-0 overflow-hidden"
+                  className="flex-1 w-full max-w-5xl mx-auto flex flex-col justify-start relative z-10 animate-fade-in space-y-4 md:space-y-6 min-h-0 overflow-visible md:overflow-hidden"
                 >
                   
                   {/* Cabeçalho de Busca e Controles do Gerenciador */}
@@ -1903,19 +1923,20 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                     </div>
 
                     {/* Botões de Ação de Pastas/Ordenação */}
-                    <div className="flex items-center gap-3 self-end sm:self-auto text-xs font-geist shrink-0">
+                    <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto self-end sm:self-auto text-xs font-geist shrink-0">
                       <button
                         onClick={() => setSortBy(prev => prev === 'date' ? 'alphabetical' : 'date')}
-                        className="flex items-center gap-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 px-4 py-2.5 text-slate-300 hover:text-white transition cursor-pointer"
+                        className="flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 px-3 sm:px-4 py-2.5 text-slate-300 hover:text-white transition cursor-pointer"
                         title={sortBy === 'date' ? "Alternar para ordem alfabética" : "Alternar para ordem cronológica"}
                       >
                         <ArrowUpDown className="h-3.5 w-3.5 text-cyan-400" />
-                        <span>Ordenar: {sortBy === 'date' ? 'Cronológica' : 'Alfabética'}</span>
+                        <span className="sm:hidden">Ordenar</span>
+                        <span className="hidden sm:inline">Ordenar: {sortBy === 'date' ? 'Cronológica' : 'Alfabética'}</span>
                       </button>
 
                       <button
                         onClick={() => setIsCreatingFolder(prev => !prev)}
-                        className="flex items-center gap-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/25 px-4 py-2.5 text-cyan-400 hover:text-cyan-300 transition cursor-pointer font-semibold"
+                        className="flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/25 px-3 sm:px-4 py-2.5 text-cyan-400 hover:text-cyan-300 transition cursor-pointer font-semibold"
                       >
                         <FolderPlus className="h-3.5 w-3.5" />
                         <span>Nova pasta</span>
@@ -1931,7 +1952,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                     >
                       <form onSubmit={handleCreateFolder} className="flex flex-col gap-3">
                         <h4 className="text-xs font-semibold text-slate-300 font-geist">Criar Nova Pasta</h4>
-                        <div className="flex gap-2">
+                        <div className="flex flex-col sm:flex-row gap-2">
                           <input
                             type="text"
                             value={newFolderName}
@@ -1968,7 +1989,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                   {(selectedAudioIds.length > 0 || selectedFolderIds.length > 0) && (
                     <div 
                       onClick={(e) => e.stopPropagation()}
-                      className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 p-3.5 rounded-2xl bg-slate-950/95 border-2 border-cyan-400/40 flex items-center justify-between text-xs text-slate-200 animate-fade-in gap-8 shadow-[0_15px_50px_rgba(0,0,0,0.85)] backdrop-blur-xl max-w-2xl w-[90%] md:min-w-[620px]"
+                      className="fixed inset-x-3 bottom-24 z-40 p-3 rounded-2xl bg-slate-950/95 border-2 border-cyan-400/40 flex flex-col items-stretch justify-between text-xs text-slate-200 animate-fade-in gap-3 shadow-[0_15px_50px_rgba(0,0,0,0.85)] backdrop-blur-xl md:absolute md:inset-x-auto md:bottom-6 md:left-1/2 md:-translate-x-1/2 md:p-3.5 md:flex-row md:items-center md:gap-8 md:max-w-2xl md:w-[90%] md:min-w-[620px]"
                     >
                       <span className="font-semibold text-xs bg-cyan-500/10 text-cyan-400 px-3.5 py-1.5 rounded-full font-geist shrink-0">
                         {selectedAudioIds.length > 0 
@@ -1977,13 +1998,13 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                         }
                       </span>
                       
-                      <div className="flex items-center gap-3.5 min-w-0 flex-1 justify-end">
+                      <div className="flex items-center gap-2 sm:gap-3.5 min-w-0 flex-1 justify-end">
                         <button
                           onClick={() => {
                             setMoveTargetFolderId(null);
                             setIsMoveModalOpen(true);
                           }}
-                          className="relative flex items-center justify-between gap-6 bg-slate-950 border border-white/10 rounded-xl px-4 py-2.5 text-[11px] text-slate-300 hover:text-white hover:border-cyan-400/50 transition cursor-pointer font-geist text-left w-[210px] shrink-0"
+                          className="relative flex flex-1 md:flex-none items-center justify-between gap-3 md:gap-6 bg-slate-950 border border-white/10 rounded-xl px-3 md:px-4 py-2.5 text-[11px] text-slate-300 hover:text-white hover:border-cyan-400/50 transition cursor-pointer font-geist text-left md:w-[210px] min-w-0"
                         >
                           <span className="truncate font-medium">
                             {selectedAudioIds.length > 0 ? 'Mover selecionados para...' : 'Mover selecionadas para...'}
@@ -2037,7 +2058,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                       setSelectionAnchorId(null);
                       setSelectionAnchorFolderId(null);
                     }}
-                    className="flex-1 bg-[#090f1a]/40 border border-white/[0.06] rounded-[2rem] p-6 backdrop-blur-md flex flex-col min-h-0 overflow-hidden relative"
+                    className="flex-1 bg-[#090f1a]/40 border border-white/[0.06] rounded-2xl md:rounded-[2rem] p-3 md:p-6 backdrop-blur-md flex flex-col min-h-0 overflow-visible md:overflow-hidden relative"
                   >
                     <div className="absolute inset-0 opacity-[0.01] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '1.5rem 1.5rem' }}></div>
                     
@@ -2048,7 +2069,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                         setSelectionAnchorId(null);
                         setSelectionAnchorFolderId(null);
                       }}
-                      className="flex-1 overflow-y-auto custom-scroll px-5 py-2.5 space-y-6 relative z-10"
+                      className="flex-1 overflow-visible md:overflow-y-auto custom-scroll px-1 sm:px-3 md:px-5 py-2.5 space-y-5 md:space-y-6 relative z-10"
                     >
                       
                       {/* Breadcrumbs locais */}
@@ -2192,7 +2213,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                                         <span className="line-clamp-6 whitespace-normal break-words leading-tight flex-1">{f.name}</span>
                                       </div>
                                       
-                                      <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition shrink-0 ml-1">
+                                      <div className="opacity-100 md:opacity-0 md:group-hover:opacity-100 flex items-center gap-1 transition shrink-0 ml-1">
                                         <button
                                           onClick={(e) => {
                                             e.stopPropagation();
@@ -2285,8 +2306,8 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
 
               {activeTab === 'profile' && (
                 /* Caso 5: Tela de Perfil e Configurações Completa */
-                <div className="flex-1 w-full max-w-2xl mx-auto flex flex-col justify-center py-6 relative z-10 animate-fade-in">
-                  <div className="rounded-[2.5rem] border border-white/[0.08] bg-[#090f1a]/70 p-8 sm:p-10 backdrop-blur-2xl shadow-2xl relative overflow-hidden flex flex-col group transition-all duration-300 hover:border-cyan-400/25">
+                <div className="flex-1 w-full max-w-2xl mx-auto flex flex-col justify-start md:justify-center py-2 md:py-6 relative z-10 animate-fade-in">
+                  <div className="rounded-2xl sm:rounded-[2.5rem] border border-white/[0.08] bg-[#090f1a]/70 p-5 sm:p-10 backdrop-blur-2xl shadow-2xl relative overflow-hidden flex flex-col group transition-all duration-300 hover:border-cyan-400/25">
                     {/* Grid de bolinhas de fundo sutil */}
                     <div className="absolute inset-0 opacity-[0.015] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '1.5rem 1.5rem' }}></div>
                     
@@ -2430,13 +2451,41 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
 
       </main>
 
+      <nav
+        aria-label="Navegação principal"
+        className="mobile-bottom-nav fixed inset-x-0 bottom-0 z-50 grid grid-cols-3 gap-1 border-t border-white/[0.1] bg-[#090f1a]/95 px-3 pt-2 backdrop-blur-2xl md:hidden"
+      >
+        {MOBILE_NAV_ITEMS.map(({ id, label, icon: Icon }) => {
+          const isActive = activeTab === id && !selectedTranscription;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigateToTab(id);
+              }}
+              aria-current={isActive ? 'page' : undefined}
+              className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl border px-2 py-1.5 text-[10px] font-semibold transition-colors ${
+                isActive
+                  ? 'border-cyan-400/25 bg-cyan-400/[0.08] text-cyan-300'
+                  : 'border-transparent text-slate-400 active:bg-white/[0.06] active:text-white'
+              }`}
+            >
+              <Icon aria-hidden="true" className={`h-5 w-5 ${isActive ? 'text-cyan-400' : 'text-slate-400'}`} />
+              <span>{label}</span>
+            </button>
+          );
+        })}
+      </nav>
+
       {/* ==========================================
            3. PAINEL FLUTUANTE DE FILA (UPLOAD)
            ========================================== */}
       {queue.length > 0 && (
         <div 
           onClick={(e) => e.stopPropagation()}
-          className="fixed bottom-6 right-6 z-50 w-96 bg-[#090f1a]/95 backdrop-blur-2xl border border-white/10 shadow-2xl rounded-2xl overflow-hidden transition-all duration-300"
+          className="fixed bottom-24 inset-x-3 z-[60] w-auto bg-[#090f1a]/95 backdrop-blur-2xl border border-white/10 shadow-2xl rounded-2xl overflow-hidden transition-all duration-300 md:bottom-6 md:left-auto md:right-6 md:w-96"
         >
           
           {/* Cabeçalho do Painel */}
@@ -2549,7 +2598,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
           onClick={(e) => e.stopPropagation()}
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in"
         >
-          <div className="w-full max-w-md rounded-[2.5rem] border border-white/10 bg-[#090f1a]/95 p-8 shadow-2xl relative overflow-hidden text-center font-geist">
+          <div className="w-full max-w-md rounded-2xl sm:rounded-[2.5rem] border border-white/10 bg-[#090f1a]/95 p-5 sm:p-8 shadow-2xl relative overflow-hidden text-center font-geist">
             {/* Background Blob */}
             <div className="absolute top-[-20%] left-[-20%] w-60 h-60 rounded-full bg-red-900/10 blur-[4rem] pointer-events-none"></div>
 
@@ -2599,7 +2648,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
         >
           <div 
             onClick={(e) => e.stopPropagation()} 
-            className="w-full max-w-lg rounded-[2.5rem] border border-white/10 bg-[#090f1a]/95 p-8 shadow-2xl relative overflow-hidden flex flex-col max-h-[85vh] font-geist"
+            className="w-full max-w-lg rounded-2xl sm:rounded-[2.5rem] border border-white/10 bg-[#090f1a]/95 p-5 sm:p-8 shadow-2xl relative overflow-hidden flex flex-col max-h-[85dvh] font-geist"
           >
             {/* Background Blob */}
             <div className="absolute top-[-20%] left-[-20%] w-60 h-60 rounded-full bg-cyan-900/10 blur-[4rem] pointer-events-none"></div>
