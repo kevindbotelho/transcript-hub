@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useMemo, useEffect } from 'react';
+import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import { 
   AudioLines, 
   Search, 
@@ -63,6 +64,13 @@ interface QueueItem {
 
 interface DashboardClientProps {
   userEmail: string;
+}
+
+interface SignedUploadData {
+  bucket: string;
+  uploadPath: string;
+  token: string;
+  contentType: string;
 }
 
 type DashboardTab = 'transcribe' | 'files' | 'profile';
@@ -1269,9 +1277,6 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
     let progressInterval: NodeJS.Timeout | undefined;
 
     try {
-      const formData = new FormData();
-      formData.append('file', item.file);
-
       // Progresso simulado incremental
       progressInterval = setInterval(() => {
         setQueue(prev => prev.map(q => {
@@ -1283,9 +1288,40 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
         }));
       }, 1000);
 
+      const uploadUrlResponse = await fetch('/api/transcribe/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: item.file.name,
+          fileSize: item.file.size,
+        }),
+      });
+
+      if (!uploadUrlResponse.ok) {
+        const errorData = await uploadUrlResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Não foi possível preparar o envio do áudio.');
+      }
+
+      const uploadData: SignedUploadData = await uploadUrlResponse.json();
+      const supabase = createSupabaseClient();
+      const { error: uploadError } = await supabase.storage
+        .from(uploadData.bucket)
+        .uploadToSignedUrl(uploadData.uploadPath, uploadData.token, item.file, {
+          contentType: uploadData.contentType,
+        });
+
+      if (uploadError) {
+        throw new Error(`Falha ao enviar o áudio: ${uploadError.message}`);
+      }
+
       const response = await fetch('/api/transcribe', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uploadPath: uploadData.uploadPath,
+          fileName: item.file.name,
+          fileSize: item.file.size,
+        }),
       });
 
       if (progressInterval) clearInterval(progressInterval);
@@ -1307,14 +1343,15 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
       // Grava histórico no estado local
       setTranscriptions(prev => [newTranscription, ...prev]);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Erro ao processar áudio na fila:', err);
       if (progressInterval) clearInterval(progressInterval);
+      const errorMessage = err instanceof Error ? err.message : 'Falha ao processar o áudio.';
       setQueue(prev => prev.map(q => q.id === id ? { 
         ...q, 
         status: 'failed', 
         progress: 0, 
-        error: err.message || 'Falha ao processar o áudio.' 
+        error: errorMessage
       } : q));
     }
   };
