@@ -56,7 +56,7 @@ export async function POST(request: Request) {
 
     if (!fileName || fileName.length > 255 || !extension) {
       return NextResponse.json(
-        { error: 'Formato inválido. Envie um arquivo .mp3, .m4a, .wav ou .webm.' },
+        { error: 'Formato inválido. Envie um arquivo .mp3, .m4a, .wav, .webm ou .ogg.' },
         { status: 400 }
       );
     }

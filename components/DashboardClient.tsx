@@ -1363,7 +1363,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
     
     if (filesArray.length === 0) return;
 
-    const allowedExtensions = ['.mp3', '.m4a', '.wav', '.webm'];
+    const allowedExtensions = ['.mp3', '.m4a', '.wav', '.webm', '.ogg'];
     const maxSizeBytes = 25 * 1024 * 1024; // 25 MB
 
     const newItems: QueueItem[] = [];
@@ -1378,7 +1378,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
 
       if (!hasValidExtension) {
         status = 'failed';
-        errorMsg = 'Formato inválido (insira .mp3, .m4a, .wav ou .webm).';
+        errorMsg = 'Formato inválido (insira .mp3, .m4a, .wav, .webm ou .ogg).';
       } else if (!hasValidSize) {
         status = 'failed';
         errorMsg = 'Arquivo muito grande (máximo de 25 MB).';
@@ -1850,7 +1850,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                             <span>Formatos Compatíveis</span>
                           </div>
                           <p className="text-xs text-slate-400 font-geist leading-relaxed">
-                            Suporte completo para formatos de áudio gravados pelo iPhone (Notas de Voz em `.m4a`) e outros formatos padrão da web: `.mp3`, `.wav` e `.webm`.
+                            Suporte completo para formatos de áudio gravados pelo iPhone (Notas de Voz em `.m4a`), áudios do WhatsApp (`.ogg`) e outros formatos padrão da web: `.mp3`, `.wav` e `.webm`.
                           </p>
                         </div>
                       </div>
@@ -1879,7 +1879,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                           type="file"
                           ref={fileInputRef}
                           onChange={handleFileChange}
-                          accept=".mp3,.m4a,.wav,.webm"
+                          accept=".mp3,.m4a,.wav,.webm,.ogg"
                           multiple
                           className="hidden"
                         />
@@ -1901,6 +1901,7 @@ export default function DashboardClient({ userEmail }: DashboardClientProps) {
                           <div className="flex flex-wrap justify-center gap-2 text-[9px] font-mono-jb text-slate-500 pt-2">
                             <span className="px-2 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded-full uppercase">MP3</span>
                             <span className="px-2 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded-full uppercase">M4A (iOS)</span>
+                            <span className="px-2 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded-full uppercase">OGG (WhatsApp)</span>
                             <span className="px-2 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded-full uppercase">WAV</span>
                             <span className="px-2 py-0.5 bg-white/[0.04] border border-white/[0.05] rounded-full uppercase">WEBM</span>
                           </div>

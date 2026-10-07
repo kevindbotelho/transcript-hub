@@ -24,7 +24,7 @@ O **Transcript Hub** é um webapp de uso pessoal e restrito a poucos usuários, 
 
 ### 3.2. Upload e Processamento de Áudio
 - Upload de arquivos de áudio arrastando e soltando no desktop, ou clicando para selecionar arquivos no celular.
-- Suporte a múltiplos formatos suportados pela API da OpenAI e gravados pelo iPhone: `.mp3`, `.m4a` (Notas de voz iOS), `.wav`, `.webm`.
+- Suporte a múltiplos formatos suportados pela API da OpenAI e gravados pelo iPhone ou WhatsApp: `.mp3`, `.m4a` (Notas de voz iOS), `.ogg` (WhatsApp), `.wav`, `.webm`.
 - Integração direta com o endpoint `/audio/transcriptions` da OpenAI usando o modelo `gpt-4o-mini-transcribe-2025-12-15` (ou similar compatível).
 - Indicador visual de progresso (Loading/Processando) durante a transcrição do áudio.
 

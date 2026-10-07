@@ -6,6 +6,7 @@ export const AUDIO_CONTENT_TYPES = {
   '.m4a': 'audio/mp4',
   '.wav': 'audio/wav',
   '.webm': 'audio/webm',
+  '.ogg': 'audio/ogg',
 } as const;
 
 export type AudioExtension = keyof typeof AUDIO_CONTENT_TYPES;

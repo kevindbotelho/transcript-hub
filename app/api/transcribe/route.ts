@@ -26,7 +26,7 @@ function isOwnedTemporaryUploadPath(uploadPath: string, userId: string): boolean
   return (
     ownerId === userId &&
     !extraSegment &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(mp3|m4a|wav|webm)$/i.test(objectName)
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(mp3|m4a|wav|webm|ogg)$/i.test(objectName)
   );
 }
 
